@@ -301,6 +301,20 @@ class Y1v0hEvt1ClimbCfgPPO( LeggedRobotCfgPPO ):
         algorithm_class_name = 'NP3O'
         max_iterations = 40000
         num_steps_per_env = 24
+
+        # Training video recording. Videos are saved under:
+        # logs/<experiment_name>/<run>/videos/train_iter_xxxxxx.mp4
+        # One mp4 contains a 4x4 mosaic of 16 randomly selected environments.
+        record_video = True
+        video_interval = 500
+        video_duration = 8.0
+        video_fps = 30
+        video_num_envs = 16
+        video_tile_rows = 4
+        video_tile_cols = 4
+        video_tile_width = 320
+        video_tile_height = 180
+
         resume = False
         resume_path = ''
  

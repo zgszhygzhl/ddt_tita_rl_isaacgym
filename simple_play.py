@@ -1,150 +1,249 @@
-from configs.tita_constraint_config import TitaConstraintRoughCfg, TitaConstraintRoughCfgPPO
-
-import cv2
 import os
 
-from isaacgym import gymapi
-from utils import  get_args, export_policy_as_jit, task_registry, Logger
-from configs import *
-from utils.helpers import class_to_dict
-from utils.task_registry import task_registry
 import numpy as np
 import torch
+from isaacgym import gymapi
+
+from configs.tita_constraint_config import TitaConstraintRoughCfg, TitaConstraintRoughCfgPPO
+from configs.d1h_constraint_config import D1HConstraintRoughCfg, D1HConstraintRoughCfgPPO
+from configs.y1v0h_evt1_climb_config import (
+    Y1v0hEvt1Climb,
+    Y1v0hEvt1ClimbCfg,
+    Y1v0hEvt1ClimbCfgPPO,
+)
+from envs import LeggedRobot
+from modules import *
+from utils import get_args, get_load_path, task_registry
+from utils.helpers import class_to_dict
+from utils.video_recorder import FfmpegVideoWriter
 from global_config import ROOT_DIR
 
-from PIL import Image as im
+
+# Play/evaluation video layout.
+# Create 24 candidate environments, then randomly select 4 for a 2x2 mosaic.
+PLAY_NUM_ENVS = 24
+PLAY_VIDEO_NUM_ENVS = 4
+PLAY_TILE_ROWS = 2
+PLAY_TILE_COLS = 2
+PLAY_TILE_WIDTH = 640
+PLAY_TILE_HEIGHT = 360
+PLAY_VIDEO_DURATION = 20.0
+PLAY_VIDEO_FPS = 30
 
 
+def register_tasks():
+    task_registry.register(
+        "tita_constraint",
+        LeggedRobot,
+        TitaConstraintRoughCfg(),
+        TitaConstraintRoughCfgPPO(),
+    )
+    task_registry.register(
+        "d1h_constraint",
+        LeggedRobot,
+        D1HConstraintRoughCfg(),
+        D1HConstraintRoughCfgPPO(),
+    )
+    task_registry.register(
+        "d1h_evt1_climb",
+        Y1v0hEvt1Climb,
+        Y1v0hEvt1ClimbCfg(),
+        Y1v0hEvt1ClimbCfgPPO(),
+    )
 
 
-from envs.no_constrains_legged_robot import Tita
-from envs import *
-from export_policy_as_onnx  import *
-import argparse
+def _get_policy_checkpoint(args, train_cfg):
+    load_run = args.load_run if args.load_run is not None else getattr(train_cfg.runner, "load_run", -1)
+    checkpoint = args.checkpoint if args.checkpoint is not None else getattr(train_cfg.runner, "checkpoint", -1)
+    log_root = os.path.join(ROOT_DIR, "logs", train_cfg.runner.experiment_name)
+    return get_load_path(log_root, load_run=load_run, checkpoint=checkpoint)
 
 
+def _disable_eval_randomization(env_cfg):
+    env_cfg.noise.add_noise = False
 
-def delete_files_in_directory(directory_path):
-   try:
-     files = os.listdir(directory_path)
-     for file in files:
-       file_path = os.path.join(directory_path, file)
-       if os.path.isfile(file_path):
-         os.remove(file_path)
-     print("All files deleted successfully.")
-   except OSError:
-     print("Error occurred while deleting files.")
+    if hasattr(env_cfg.terrain, "curriculum"):
+        env_cfg.terrain.curriculum = False
+    if hasattr(env_cfg.terrain, "num_rows"):
+        env_cfg.terrain.num_rows = 5
+    if hasattr(env_cfg.terrain, "num_cols"):
+        env_cfg.terrain.num_cols = 5
 
-def play_on_constraint_policy_runner(args):
+    for name in [
+        "push_robots",
+        "randomize_friction",
+        "randomize_restitution",
+        "randomize_base_com",
+        "randomize_base_mass",
+        "randomize_motor",
+        "randomize_kpkd",
+        "randomize_lag_timesteps",
+        "disturbance",
+    ]:
+        if hasattr(env_cfg.domain_rand, name):
+            setattr(env_cfg.domain_rand, name, False)
+
+    if hasattr(env_cfg.control, "use_filter"):
+        env_cfg.control.use_filter = True
+
+
+def _select_random_env_ids(num_envs, num_selected, seed=None):
+    num_selected = min(int(num_selected), int(num_envs))
+    if num_selected <= 0:
+        return []
+    rng = np.random.default_rng(seed)
+    return rng.choice(num_envs, size=num_selected, replace=False).astype(int).tolist()
+
+
+def _create_play_cameras(env, env_ids):
+    camera_props = gymapi.CameraProperties()
+    camera_props.width = PLAY_TILE_WIDTH
+    camera_props.height = PLAY_TILE_HEIGHT
+
+    cam_handles = []
+    for env_id in env_ids:
+        cam_handle = env.gym.create_camera_sensor(env.envs[env_id], camera_props)
+        cam_handles.append(cam_handle)
+    _update_play_camera_locations(env, env_ids, cam_handles)
+    return cam_handles
+
+
+def _update_play_camera_locations(env, env_ids, cam_handles):
+    for env_id, cam_handle in zip(env_ids, cam_handles):
+        origin = env.env_origins[env_id].detach().cpu().numpy()
+        cam_pos = gymapi.Vec3(
+            float(origin[0] + 2.8),
+            float(origin[1] - 4.2),
+            float(origin[2] + 1.8),
+        )
+        cam_target = gymapi.Vec3(
+            float(origin[0] + 0.45),
+            float(origin[1] + 0.0),
+            float(origin[2] + 0.65),
+        )
+        env.gym.set_camera_location(cam_handle, env.envs[env_id], cam_pos, cam_target)
+
+
+def _capture_mosaic_frame(env, env_ids, cam_handles):
+    _update_play_camera_locations(env, env_ids, cam_handles)
+    env.gym.step_graphics(env.sim)
+    env.gym.render_all_camera_sensors(env.sim)
+
+    total_tiles = PLAY_TILE_ROWS * PLAY_TILE_COLS
+    black_tile = np.zeros((PLAY_TILE_HEIGHT, PLAY_TILE_WIDTH, 3), dtype=np.uint8)
+    tiles = []
+
+    for env_id, cam_handle in zip(env_ids, cam_handles):
+        image = env.gym.get_camera_image(
+            env.sim,
+            env.envs[env_id],
+            cam_handle,
+            gymapi.IMAGE_COLOR,
+        )
+        frame = np.asarray(image, dtype=np.uint8).reshape(
+            (PLAY_TILE_HEIGHT, PLAY_TILE_WIDTH, 4)
+        )[:, :, :3]
+        tiles.append(frame)
+
+    while len(tiles) < total_tiles:
+        tiles.append(black_tile)
+
+    rows = []
+    for row_index in range(PLAY_TILE_ROWS):
+        row_start = row_index * PLAY_TILE_COLS
+        row_tiles = tiles[row_start:row_start + PLAY_TILE_COLS]
+        rows.append(np.concatenate(row_tiles, axis=1))
+    return np.concatenate(rows, axis=0)
+
+
+def play(args):
     env_cfg, train_cfg = task_registry.get_cfgs(name=args.task)
-    # override some parameters for testing
-    env_cfg.env.num_envs = min(env_cfg.env.num_envs, 100)
-    env_cfg.terrain.num_rows = 5
-    env_cfg.terrain.num_cols = 5
-    env_cfg.terrain.curriculum = False
-    env_cfg.noise.add_noise = False
-    # env_cfg.terrain.mesh_type = 'plane'
-    env_cfg.domain_rand.push_robots = False
-    #env_cfg.domain_rand.randomize_friction = False
-    env_cfg.domain_rand.randomize_base_com = False
-    env_cfg.domain_rand.randomize_base_mass = False
-    env_cfg.domain_rand.randomize_motor = False
-    env_cfg.domain_rand.randomize_lag_timesteps = False
-    env_cfg.noise.add_noise = False
-    env_cfg.domain_rand.randomize_friction = False
-    env_cfg.domain_rand.randomize_restitution = False
-    env_cfg.control.use_filter = True
-    # prepare environment
+
+    env_cfg.env.num_envs = min(env_cfg.env.num_envs, PLAY_NUM_ENVS)
+    _disable_eval_randomization(env_cfg)
+
     env, _ = task_registry.make_env(name=args.task, args=args, env_cfg=env_cfg)
+    env.reset()
     obs = env.get_observations()
-    # load policy partial_checkpoint_load
+
     policy_cfg_dict = class_to_dict(train_cfg.policy)
     runner_cfg_dict = class_to_dict(train_cfg.runner)
     actor_critic_class = eval(runner_cfg_dict["policy_class_name"])
-    policy: ActorCriticRMA = actor_critic_class(env.cfg.env.n_proprio,
-                                                      env.cfg.env.n_scan,
-                                                      env.num_obs,
-                                                      env.cfg.env.n_priv_latent,
-                                                      env.cfg.env.history_len,
-                                                      env.num_actions,
-                                                      **policy_cfg_dict)
-    print(policy)
-    #model_dict = torch.load(os.path.join(ROOT_DIR, 'model_4000_phase2_hip.pt'))
-    model_dict = torch.load(os.path.join(ROOT_DIR, 'tita_example_10000.pt'))
-    policy.load_state_dict(model_dict['model_state_dict'])
+    policy = actor_critic_class(
+        env.cfg.env.n_proprio,
+        env.cfg.env.n_scan,
+        env.num_obs,
+        env.cfg.env.n_priv_latent,
+        env.cfg.env.history_len,
+        env.num_actions,
+        **policy_cfg_dict,
+    )
+
+    resume_path = _get_policy_checkpoint(args, train_cfg)
+    model_dict = torch.load(resume_path, map_location=env.device)
+    policy.load_state_dict(model_dict["model_state_dict"])
+    policy.eval()
     policy = policy.to(env.device)
-    policy.save_torch_jit_policy('model.pt',env.device)
+    print(f"[play] loaded checkpoint: {resume_path}")
 
-    # clear images under frames folder
-    # frames_path = os.path.join(ROOT_DIR, 'logs', train_cfg.runner.experiment_name, 'exported', 'frames')
-    # delete_files_in_directory(frames_path)
+    seed = args.seed if getattr(args, "seed", None) is not None else None
+    video_env_ids = _select_random_env_ids(env.num_envs, PLAY_VIDEO_NUM_ENVS, seed=seed)
+    cam_handles = _create_play_cameras(env, video_env_ids)
+    print(f"[play] selected video envs: {video_env_ids}")
 
-    # set rgba camera sensor for debug and doudle check
-    camera_local_transform = gymapi.Transform()
-    camera_local_transform.p = gymapi.Vec3(-0.5, -1, 0.1)
-    camera_local_transform.r = gymapi.Quat.from_axis_angle(gymapi.Vec3(0,0,1), np.deg2rad(90))
-    camera_props = gymapi.CameraProperties()
-    camera_props.width = 512
-    camera_props.height = 512
+    video_width = PLAY_TILE_COLS * PLAY_TILE_WIDTH
+    video_height = PLAY_TILE_ROWS * PLAY_TILE_HEIGHT
+    video_path = os.path.join(
+        ROOT_DIR,
+        "logs",
+        train_cfg.runner.experiment_name,
+        "play_record.mp4",
+    )
+    video = FfmpegVideoWriter(video_path, video_width, video_height, PLAY_VIDEO_FPS)
+    print(f"[play] recording 2x2 video: {video_path}")
 
-    cam_handle = env.gym.create_camera_sensor(env.envs[0], camera_props)
-    body_handle = env.gym.get_actor_rigid_body_handle(env.envs[0], env.actor_handles[0], 0)
-    env.gym.attach_camera_to_body(cam_handle, env.envs[0], body_handle, camera_local_transform, gymapi.FOLLOW_TRANSFORM)
+    num_steps = int(PLAY_VIDEO_DURATION / env.dt)
+    record_every = max(1, int(round(1.0 / (PLAY_VIDEO_FPS * env.dt))))
+    status_every = max(1, int(round(1.0 / env.dt)))
 
-    img_idx = 0
+    try:
+        for i in range(num_steps):
+            # Fixed inference command for video. Change this if you want another test.
+            env.commands[:, 0] = 0.4
+            env.commands[:, 1] = 0.0
+            env.commands[:, 2] = 0.0
+            env.commands[:, 3] = 0.0
 
-    video_duration = 40
-    num_frames = int(video_duration / env.dt)
-    print(f'gathering {num_frames} frames')
-    video = None
+            with torch.no_grad():
+                if hasattr(policy, "act_teacher"):
+                    actions = policy.act_teacher(obs)
+                else:
+                    actions = policy.act_inference(obs)
 
-    #torch.sum(self.last_actions - self.actions, dim=1)
-    # self.base_lin_vel[:, 2]
-    #torch.sum(torch.square(self.base_ang_vel[:, :2]), dim=1)
+            obs, privileged_obs, rewards, costs, dones, infos = env.step(actions)
 
-    action_rate = 0
-    z_vel = 0
-    xy_vel = 0
-    feet_air_time = 0
+            if i % record_every == 0:
+                frame = _capture_mosaic_frame(env, video_env_ids, cam_handles)
+                video.write(frame)
 
-
-    for i in range(num_frames):
-        action_rate += torch.sum(torch.abs(env.last_actions - env.actions),dim=1)
-        z_vel += torch.square(env.base_lin_vel[:, 2])
-        xy_vel += torch.sum(torch.square(env.base_ang_vel[:, :2]), dim=1)
-
-        env.commands[:,0] = 1
-        env.commands[:,1] = 0
-        env.commands[:,2] = 0
-        env.commands[:,3] = 0
-        actions = policy.act_teacher(obs)
-        # actions = torch.clamp(actions,-1.2,1.2)
-
-        obs, privileged_obs, rewards,costs,dones, infos = env.step(actions)
-        env.gym.step_graphics(env.sim) # required to render in headless mode
-        env.gym.render_all_camera_sensors(env.sim)
-        if RECORD_FRAMES:
-            img = env.gym.get_camera_image(env.sim, env.envs[0], cam_handle, gymapi.IMAGE_COLOR).reshape((512,512,4))[:,:,:3]
-            if video is None:
-                video = cv2.VideoWriter('record.mp4', cv2.VideoWriter_fourcc(*'MP4V'), int(1 / env.dt), (img.shape[1],img.shape[0]))
-            video.write(img)
-            img_idx += 1 
-    print("action rate:",action_rate/num_frames)
-    print("z vel:",z_vel/num_frames)
-    print("xy_vel:",xy_vel/num_frames)
-    print("feet air reward",feet_air_time/num_frames)
-
-    video.release()
+            if i % status_every == 0:
+                robot_index = video_env_ids[0] if video_env_ids else 0
+                print(
+                    f"step={i:05d} "
+                    f"env={robot_index} "
+                    f"cmd=({env.commands[robot_index, 0].item():+.2f}, "
+                    f"{env.commands[robot_index, 1].item():+.2f}, "
+                    f"{env.commands[robot_index, 2].item():+.2f}) "
+                    f"vel=({env.base_lin_vel[robot_index, 0].item():+.2f}, "
+                    f"{env.base_lin_vel[robot_index, 1].item():+.2f}, "
+                    f"{env.base_ang_vel[robot_index, 2].item():+.2f})"
+                )
+    finally:
+        video.close()
+        print(f"[play] video saved: {video_path}")
 
 
-if __name__ == '__main__':
-    EXPORT_POLICY = True
-    RECORD_FRAMES = False
-    MOVE_CAMERA = False
-
-    # Register tasks
-    task_registry.register("tita_constraint", LeggedRobot, TitaConstraintRoughCfg(), TitaConstraintRoughCfgPPO())
-
+if __name__ == "__main__":
+    register_tasks()
     args = get_args()
-
-    play_on_constraint_policy_runner(args)
+    play(args)

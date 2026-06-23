@@ -4,6 +4,9 @@ from collections import deque
 import statistics
 import warnings
 
+import numpy as np
+from isaacgym import gymapi
+
 from torch.utils.tensorboard import SummaryWriter
 import torch
 from global_config import ROOT_DIR
@@ -13,6 +16,7 @@ from algorithm import NP3O
 from envs.vec_env import VecEnv
 from modules.depth_backbone import DepthOnlyFCBackbone58x87, RecurrentDepthBackbone
 from utils.helpers import hard_phase_schedualer, partial_checkpoint_load
+from utils.video_recorder import FfmpegVideoWriter
 from copy import copy, deepcopy
 
 class OnConstraintPolicyRunner:
@@ -87,7 +91,162 @@ class OnConstraintPolicyRunner:
         self.tot_time = 0
         self.current_learning_iteration = 0
 
+        # Training video recording. A single mp4 contains a mosaic of several
+        # randomly selected environments. Cameras are created once to avoid
+        # accumulating camera sensors during long training runs.
+        self.record_video = bool(self.cfg.get("record_video", False)) and self.log_dir is not None
+        self.video_interval = int(self.cfg.get("video_interval", 500))
+        self.video_duration = float(self.cfg.get("video_duration", 8.0))
+        self.video_fps = int(self.cfg.get("video_fps", 30))
+        self.video_num_envs = int(self.cfg.get("video_num_envs", 16))
+        self.video_tile_rows = int(self.cfg.get("video_tile_rows", 4))
+        self.video_tile_cols = int(self.cfg.get("video_tile_cols", 4))
+        self.video_tile_width = int(self.cfg.get("video_tile_width", 320))
+        self.video_tile_height = int(self.cfg.get("video_tile_height", 180))
+        self.video_width = self.video_tile_cols * self.video_tile_width
+        self.video_height = self.video_tile_rows * self.video_tile_height
+        self.video_env_ids = []
+        self.video_cam_handles = []
+        self.video_writer = None
+        self.video_steps_left = 0
+        self.video_step_count = 0
+        self.video_record_every = 1
+        self.video_black_tile = np.zeros(
+            (self.video_tile_height, self.video_tile_width, 3), dtype=np.uint8
+        )
+
         self.env.reset()
+        if self.record_video:
+            self._setup_train_video_camera()
+
+
+    def _setup_train_video_camera(self):
+        """Create fixed world cameras for random training environments."""
+        self.video_env_ids = []
+        self.video_cam_handles = []
+
+        max_cameras = min(
+            self.env.num_envs,
+            self.video_num_envs,
+            self.video_tile_rows * self.video_tile_cols,
+        )
+        if max_cameras <= 0:
+            return
+
+        camera_props = gymapi.CameraProperties()
+        camera_props.width = self.video_tile_width
+        camera_props.height = self.video_tile_height
+
+        # Randomly choose a diverse subset once at runner creation. We do not
+        # recreate cameras every video_interval, because Isaac Gym does not need
+        # camera churn during long training runs.
+        if self.env.num_envs <= max_cameras:
+            selected_env_ids = list(range(self.env.num_envs))
+        else:
+            selected_env_ids = torch.randperm(
+                self.env.num_envs,
+                device=self.env.device,
+            )[:max_cameras].detach().cpu().tolist()
+        selected_env_ids = [int(env_id) for env_id in selected_env_ids]
+
+        self.video_env_ids = selected_env_ids
+        print(f"[video] selected training envs: {self.video_env_ids}")
+
+        for env_id in self.video_env_ids:
+            env_handle = self.env.envs[env_id]
+            cam_handle = self.env.gym.create_camera_sensor(env_handle, camera_props)
+            self.video_cam_handles.append(cam_handle)
+
+        self.video_record_every = max(1, int(round(1.0 / (self.video_fps * self.env.dt))))
+        self._update_train_video_camera_locations()
+
+    def _update_train_video_camera_locations(self):
+        """Keep cameras looking at each selected environment origin."""
+        for env_id, cam_handle in zip(self.video_env_ids, self.video_cam_handles):
+            origin = self.env.env_origins[env_id].detach().cpu().numpy()
+            env_handle = self.env.envs[env_id]
+
+            cam_pos = gymapi.Vec3(
+                float(origin[0] + 2.4),
+                float(origin[1] - 3.3),
+                float(origin[2] + 1.55),
+            )
+            cam_target = gymapi.Vec3(
+                float(origin[0] + 0.35),
+                float(origin[1] + 0.0),
+                float(origin[2] + 0.65),
+            )
+            self.env.gym.set_camera_location(cam_handle, env_handle, cam_pos, cam_target)
+
+    def _start_train_video(self, iteration):
+        if not self.record_video or not self.video_cam_handles:
+            return
+
+        self._close_train_video()
+        video_dir = os.path.join(self.log_dir, "videos")
+        video_path = os.path.join(video_dir, f"train_iter_{iteration:06d}.mp4")
+        self.video_writer = FfmpegVideoWriter(
+            video_path,
+            self.video_width,
+            self.video_height,
+            self.video_fps,
+        )
+        self.video_steps_left = max(1, int(np.ceil(self.video_duration / self.env.dt)))
+        self.video_step_count = 0
+        print(f"[video] recording training video: {video_path}")
+
+    def _capture_train_video_frame(self):
+        if self.video_writer is None or not self.video_cam_handles:
+            return
+
+        self._update_train_video_camera_locations()
+        self.env.gym.step_graphics(self.env.sim)
+        self.env.gym.render_all_camera_sensors(self.env.sim)
+
+        if self.video_step_count % self.video_record_every == 0:
+            tiles = []
+            total_tiles = self.video_tile_rows * self.video_tile_cols
+
+            for env_id, cam_handle in zip(self.video_env_ids, self.video_cam_handles):
+                image = self.env.gym.get_camera_image(
+                    self.env.sim,
+                    self.env.envs[env_id],
+                    cam_handle,
+                    gymapi.IMAGE_COLOR,
+                )
+                frame = np.asarray(image, dtype=np.uint8).reshape(
+                    (self.video_tile_height, self.video_tile_width, 4)
+                )[:, :, :3]
+                tiles.append(frame)
+
+            while len(tiles) < total_tiles:
+                tiles.append(self.video_black_tile)
+
+            rows = []
+            for row_index in range(self.video_tile_rows):
+                row_start = row_index * self.video_tile_cols
+                row_tiles = tiles[row_start:row_start + self.video_tile_cols]
+                rows.append(np.concatenate(row_tiles, axis=1))
+
+            mosaic_frame = np.concatenate(rows, axis=0)
+            self.video_writer.write(mosaic_frame)
+
+        self.video_step_count += 1
+        self.video_steps_left -= 1
+        if self.video_steps_left <= 0:
+            self._close_train_video()
+
+    def _close_train_video(self):
+        if self.video_writer is None:
+            return
+        try:
+            self.video_writer.close()
+        except Exception as error:
+            warnings.warn(f"Failed to finalize training video: {error}")
+        finally:
+            self.video_writer = None
+            self.video_steps_left = 0
+            self.video_step_count = 0
 
     def learn(self, num_learning_iterations, init_at_random_ep_len=False):
         # initialize writer
@@ -120,6 +279,8 @@ class OnConstraintPolicyRunner:
             self.alg.actor_critic.imitation_mode()
             
         for it in range(self.current_learning_iteration, tot_iter):
+            if self.record_video and it % self.video_interval == 0:
+                self._start_train_video(it)
             # act_teacher_flag = self.act_shed[it]
             # imi_flag = self.imi_shed[it]
             # lag_flag = self.lag_shed[it]
@@ -143,6 +304,7 @@ class OnConstraintPolicyRunner:
                    
                     actions = self.alg.act(obs, critic_obs, infos)
                     obs, privileged_obs, rewards,costs,dones, infos = self.env.step(actions)  # obs has changed to next_obs !! if done obs has been reset
+                    self._capture_train_video_frame()
                     critic_obs = privileged_obs if privileged_obs is not None else obs
                     obs, critic_obs,rewards,costs,dones = obs.to(self.device), critic_obs.to(self.device), rewards.to(self.device),costs.to(self.device),dones.to(self.device)
                     self.alg.process_env_step(rewards,costs,dones, infos)
@@ -182,6 +344,7 @@ class OnConstraintPolicyRunner:
 
         self.current_learning_iteration += num_learning_iterations
         self.save(os.path.join(self.log_dir, 'model_{}.pt'.format(self.current_learning_iteration)))
+        self._close_train_video()
 
     def log(self, locs, width=80, pad=35):
         self.tot_timesteps += self.num_steps_per_env * self.env.num_envs
