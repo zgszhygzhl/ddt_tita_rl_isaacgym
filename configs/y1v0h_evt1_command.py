@@ -501,6 +501,55 @@ class Y1v0hEvt1Command(LeggedRobot):
         base_height = torch.mean(self.root_states[:, 2].unsqueeze(1) - self.measured_heights, dim=1)
         # print("base_height",base_height)
         return torch.square(base_height - self.cfg.rewards.base_height_target)
+
+    def _reward_both_feet_air(self):
+        """
+        Penalize simultaneous airborne state of both wheel-feet.
+
+        This is designed to suppress jumping-style stair climbing, while allowing
+        very short contact glitches caused by PhysX / trimesh contact noise.
+        """
+
+        # Lazy init: one timer per env.
+        if not hasattr(self, "_both_feet_air_time"):
+            self._both_feet_air_time = torch.zeros(
+                self.num_envs, dtype=torch.float, device=self.device
+            )
+
+        # Contact detection.
+        # Use a low threshold to avoid treating light rolling contact as air.
+        contact_force_threshold = getattr(
+            self.cfg.rewards, "both_feet_air_contact_force", 1.0
+        )
+        contacts = self.contact_forces[:, self.feet_indices, 2] > contact_force_threshold
+
+        # Both feet are airborne if neither foot has vertical contact force.
+        both_air = torch.sum(contacts.float(), dim=1) == 0
+
+        # Reset timer at episode start to avoid penalizing reset/spawn transients.
+        just_reset = self.episode_length_buf <= 1
+
+        self._both_feet_air_time = torch.where(
+            both_air & (~just_reset),
+            self._both_feet_air_time + self.dt,
+            torch.zeros_like(self._both_feet_air_time),
+        )
+
+        # Grace time: ignore tiny contact glitches.
+        grace_time = getattr(self.cfg.rewards, "both_feet_air_grace_time", 0.04)
+
+        # Ramp time: do not jump from 0 to full penalty immediately.
+        ramp_time = getattr(self.cfg.rewards, "both_feet_air_ramp_time", 0.08)
+
+        excess_time = torch.clamp(self._both_feet_air_time - grace_time, min=0.0)
+
+        # Penalty factor in [0, 1].
+        # 0: no real airborne state.
+        # 1: both feet have been airborne long enough to count as a real jump.
+        penalty = torch.clamp(excess_time / ramp_time, min=0.0, max=1.0)
+
+        return penalty
+
     
 def random_quat(U):
     u1 = U[:,0].unsqueeze(1)
@@ -517,3 +566,4 @@ def random_quat(U):
     # q4 = 0.7071*torch.ones(1, device="cuda:0", dtype=torch.float)
     # Q = torch.cat([q1,q2,q3,q4],dim=-1)
     return Q
+

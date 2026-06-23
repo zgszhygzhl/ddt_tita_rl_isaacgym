@@ -24,7 +24,7 @@ def train(args):
     # Check if the task configuration folder exists and save configurations
     if os.path.exists(task_config_folder) and os.path.isdir(task_config_folder):
         print(f"Task configuration folder exists: {task_config_folder}, saving configuration files.")
-        task_registry.save_cfgs(name=args.task, train_cfg=train_cfg)
+        task_registry.save_cfgs(name=args.task, env_cfg=env_cfg, train_cfg=train_cfg)
     else:
         print(f"Task configuration folder does not exist: {task_config_folder}, skipping configuration saving.")
 

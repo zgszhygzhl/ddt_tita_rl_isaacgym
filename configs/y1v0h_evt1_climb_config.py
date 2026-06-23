@@ -64,9 +64,9 @@ class Y1v0hEvt1ClimbCfg( LeggedRobotCfg ):
                 'FL_foot_joint': 0,
                 'FR_foot_joint': 0,
         }
-        desired_feet_distance = 0.38
+        desired_feet_distance = 0.44
         # 双足期望间距随机化，增强爬楼站姿鲁棒性。
-        feet_distance_range = [0.32, 0.50]  # [min, max] feet distance range for randomization
+        feet_distance_range = [0.36, 0.50]  # [min, max] feet distance range for randomization
 
 
     class control( LeggedRobotCfg.control ):
@@ -117,8 +117,8 @@ class Y1v0hEvt1ClimbCfg( LeggedRobotCfg ):
         buffer_smoothing_factor = 0.1    # 越小越平滑，响应也越慢。
         
         class ranges:
-            lin_vel_x = [-1.0, 1.0]  # min max [m/s]
-            lin_vel_y = [-0.5, 0.5]  # min max [m/s]
+            lin_vel_x = [-0.5, 0.5]  # min max [m/s]
+            lin_vel_y = [-0.2, 0.2]  # min max [m/s]
             ang_vel_yaw = [-1.0, 1.0]  # min max [rad/s]
             heading = [-3.14, 3.14]
 
@@ -146,6 +146,10 @@ class Y1v0hEvt1ClimbCfg( LeggedRobotCfg ):
         head_los_forward_offset = 0.0
         head_los_deadband = 0.05
         head_los_max_distance = 0.35
+        # 双脚同时离地惩罚参数
+        both_feet_air_contact_force = 1.0
+        both_feet_air_grace_time = 0.04
+        both_feet_air_ramp_time = 0.08
         class scales( LeggedRobotCfg.rewards.scales ):
 
             torques = 0.0
@@ -153,13 +157,13 @@ class Y1v0hEvt1ClimbCfg( LeggedRobotCfg ):
             termination = -100.0
             tracking_lin_vel = 0.0
             tracking_lin_vel_x = 15.0
-            tracking_lin_vel_y = 10.0
+            tracking_lin_vel_y = 5.0
             tracking_ang_vel = 5.0
             lin_vel_z = -2.0
             ang_vel_xy = -0.05
             dof_vel = 0.0
             dof_acc = -2.5e-7
-            base_height = -20.0
+            base_height = -23.0
             feet_air_time = 0.0
             collision = -10.0
             stumble = 0.0
@@ -169,6 +173,7 @@ class Y1v0hEvt1ClimbCfg( LeggedRobotCfg ):
             foot_clearance= -0.0
             orientation=-10.0
             no_gait = 5.0
+            both_feet_air = -10.0
             
             # 爬楼约束：鼓励身体保持在双足之间。
             body_pos_to_feet_x = 1.0
@@ -266,14 +271,14 @@ class Y1v0hEvt1ClimbCfg( LeggedRobotCfg ):
         include_act_obs_pair_buf = False
         # terrain types: [smooth slope, rough slope, stairs up, stairs down, discrete, stepping stones, gap, obstacles crossing, high platform]
         # terrain_proportions = [0.0, 0.0, 0.7, 0.3, 0.0, 0.0, 0.0]
-        terrain_proportions = [0.1, 0.0, 0.8, 0.1, 0.0, 0.0, 0.0, 0.0, 0.0]
+        terrain_proportions = [0.1, 0.0, 0.85, 0.05, 0.0, 0.0, 0.0, 0.0, 0.0]
 
         slope = [0.0, 0.02]
-        step_height = [0.02, 0.16]
+        step_height = [0.015, 0.16]
         step_width_range = [0.51, 0.61]
         discrete_obstacles_height = [0.05, 0.25]
         pit_depth = [0.0, 1.0]
-        slope_treshold = 0.15
+        slope_treshold = 0.2
 
 
 
@@ -315,6 +320,7 @@ class Y1v0hEvt1ClimbCfgPPO( LeggedRobotCfgPPO ):
         algorithm_class_name = 'NP3O'
         max_iterations = 40000
         num_steps_per_env = 24
+        save_interval = 200
 
         # Training video recording. Videos are saved under:
         # logs/<experiment_name>/<run>/videos/train_iter_xxxxxx.mp4
@@ -328,9 +334,10 @@ class Y1v0hEvt1ClimbCfgPPO( LeggedRobotCfgPPO ):
         video_tile_cols = 4
         video_tile_width = 320
         video_tile_height = 180
-
         resume = False
         resume_path = ''
+        # resume = True
+        # resume_path = '/root/gpufree-data/ddt_tita_rl_isaacgym/logs/d1h_evt1_climb/Jun23_18-25-22_d1h_evt1_climb/model_3000.pt'
  
 class Y1v0hEvt1Climb(Y1v0hEvt1Command):
     def _reward_tracking_lin_vel_x(self):

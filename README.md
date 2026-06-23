@@ -7,15 +7,13 @@ python train.py \
   --headless \
   --num_envs 4096 \
   --max_iterations 20000 \
-  --resume \
-  --load_run Jun23_18-25-22_d1h_evt1_climb \
-  --checkpoint 3000
+  --resume 路径在配置文件里写
 
 推理 录制
 python simple_play.py \
   --task=d1h_evt1_climb \
-  --load_run Jun06_09-51-25_ \
-  --checkpoint 7400 \
+  --load_run Jun23_20-30-33_d1h_evt1_climb \
+  --checkpoint 4000 \
   --headless
 
 

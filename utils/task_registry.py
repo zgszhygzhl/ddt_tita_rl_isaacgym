@@ -5,6 +5,7 @@ import torch
 import numpy as np
 from shutil import copyfile
 import ntpath
+import json
 
 from envs.vec_env import VecEnv
 from runner import OnConstraintPolicyRunner
@@ -37,48 +38,88 @@ class TaskRegistry():
         return env_cfg, train_cfg
 
 
-    def save_cfgs(self, name, train_cfg):
+    # def save_cfgs(self, name, train_cfg):
+    #     """
+    #     Save all task-related configuration files to the log directory.
+
+    #     Args:
+    #         name (str): Task name used to locate the configuration files.
+    #         train_cfg (object): Training configuration object, used to determine which files to save.
+    #     """
+    #     # Ensure the log directory exists
+    #     if not os.path.exists(self.log_dir):
+    #         os.makedirs(self.log_dir, exist_ok=True)
+
+    #     # Determine the correct Python file based on the runner class name
+    #     if train_cfg.runner.runner_class_name == "OnPolicyRunner":
+    #         robot_file = "no_constrains_legged_robot.py"
+    #     else:
+    #         robot_file = "legged_robot.py"
+
+    #     # Define the file paths to be saved (from save_config_files logic)
+    #     save_items = [
+    #         os.path.join(ENVS_DIR, robot_file),  # Path to the selected robot file
+    #         os.path.join(ROOT_DIR, "configs", "legged_robot_config.py"),  # Path to legged_robot_config.py
+    #         os.path.join(ROOT_DIR, "configs", f"{name}_config.py"),  # Path to task-specific constraint config file
+    #     ]
+
+    #     # Add the task-specific Python file path (if it exists)
+    #     py_root = os.path.join(ENVS_DIR, f"{name}.py")
+    #     if os.path.exists(py_root):
+    #         save_items.append(py_root)
+
+    #     # Additional files to save (from original save_cfgs logic)
+    #     additional_items = [
+    #         os.path.join(ROOT_DIR, "configs", f"{name}_config.py"),  # Task-specific constraint config
+    #     ]
+    #     save_items.extend(additional_items)
+
+    #     # Save all files
+    #     for save_item in save_items:
+    #         if os.path.exists(save_item):  # Check if the file exists
+    #             base_file_name = ntpath.basename(save_item)  # Get the file name
+    #             destination_path = os.path.join(self.log_dir, base_file_name)  # Destination path
+    #             copyfile(save_item, destination_path)  # Copy the file
+    #             print(f"Saved: {destination_path}")
+    #         else:
+    #             print(f"Warning: {save_item} does not exist and will not be copied.")
+
+    def save_cfgs(self, name, env_cfg, train_cfg):
         """
-        Save all task-related configuration files to the log directory.
-
-        Args:
-            name (str): Task name used to locate the configuration files.
-            train_cfg (object): Training configuration object, used to determine which files to save.
+        Save the real resolved configs and related source files to the log directory.
         """
-        # Ensure the log directory exists
-        if not os.path.exists(self.log_dir):
-            os.makedirs(self.log_dir, exist_ok=True)
 
-        # Determine the correct Python file based on the runner class name
-        if train_cfg.runner.runner_class_name == "OnPolicyRunner":
-            robot_file = "no_constrains_legged_robot.py"
-        else:
-            robot_file = "legged_robot.py"
+        if self.log_dir is None:
+            return
 
-        # Define the file paths to be saved (from save_config_files logic)
+        os.makedirs(self.log_dir, exist_ok=True)
+
+        # 1. 保存真正生效的配置对象，而不是只保存父类配置文件
+        env_cfg_dict = class_to_dict(env_cfg)
+        train_cfg_dict = class_to_dict(train_cfg)
+
+        with open(os.path.join(self.log_dir, "env_cfg_resolved.json"), "w", encoding="utf-8") as f:
+            json.dump(env_cfg_dict, f, indent=2, ensure_ascii=False)
+
+        with open(os.path.join(self.log_dir, "train_cfg_resolved.json"), "w", encoding="utf-8") as f:
+            json.dump(train_cfg_dict, f, indent=2, ensure_ascii=False)
+
+        # 2. 保存本次任务真正相关的源码快照
         save_items = [
-            os.path.join(ENVS_DIR, robot_file),  # Path to the selected robot file
-            os.path.join(ROOT_DIR, "configs", "legged_robot_config.py"),  # Path to legged_robot_config.py
-            os.path.join(ROOT_DIR, "configs", f"{name}_config.py"),  # Path to task-specific constraint config file
+            os.path.join(ROOT_DIR, "train.py"),
+            os.path.join(ROOT_DIR, "configs", "y1v0h_evt1_climb_config.py"),
+            os.path.join(ROOT_DIR, "configs", "y1v0h_evt1_command.py"),
+            os.path.join(ROOT_DIR, "configs", "legged_robot_config.py"),
+            os.path.join(ENVS_DIR, "legged_robot.py"),
+            os.path.join(ROOT_DIR, "utils", "terrain.py"),
+            os.path.join(ROOT_DIR, "runner", "on_constraint_policy_runner.py"),
         ]
 
-        # Add the task-specific Python file path (if it exists)
-        py_root = os.path.join(ENVS_DIR, f"{name}.py")
-        if os.path.exists(py_root):
-            save_items.append(py_root)
-
-        # Additional files to save (from original save_cfgs logic)
-        additional_items = [
-            os.path.join(ROOT_DIR, "configs", f"{name}_config.py"),  # Task-specific constraint config
-        ]
-        save_items.extend(additional_items)
-
-        # Save all files
         for save_item in save_items:
-            if os.path.exists(save_item):  # Check if the file exists
-                base_file_name = ntpath.basename(save_item)  # Get the file name
-                destination_path = os.path.join(self.log_dir, base_file_name)  # Destination path
-                copyfile(save_item, destination_path)  # Copy the file
+            if os.path.exists(save_item):
+                base_file_name = ntpath.basename(save_item)
+                destination_path = os.path.join(self.log_dir, base_file_name)
+                copyfile(save_item, destination_path)
                 print(f"Saved: {destination_path}")
             else:
                 print(f"Warning: {save_item} does not exist and will not be copied.")
