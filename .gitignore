@@ -15,3 +15,7 @@ envs/__pycache__/
 algorithm/__pycache__/
 __pycache__/
 **/__pycache__/
+runs/
+wandb/
+videos/
+*.pth
