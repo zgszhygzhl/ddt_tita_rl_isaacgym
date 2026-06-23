@@ -1,8 +1,9 @@
+from isaacgym import gymapi
 import os
 
 import numpy as np
 import torch
-from isaacgym import gymapi
+
 
 from configs.tita_constraint_config import TitaConstraintRoughCfg, TitaConstraintRoughCfgPPO
 from configs.d1h_constraint_config import D1HConstraintRoughCfg, D1HConstraintRoughCfgPPO

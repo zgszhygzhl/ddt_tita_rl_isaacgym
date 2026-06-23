@@ -41,7 +41,7 @@ class Y1v0hEvt1Command(LeggedRobot):
             self.root_states[env_ids] = self.base_init_state
             self.root_states[env_ids, :3] += self.env_origins[env_ids]
             self.root_states[env_ids, :2] += torch_rand_float(-0.2, 0.2, (len(env_ids), 2), device=self.device) # xy position within 1m of the center
-            self.root_states[env_ids, 2] += 0.2
+            self.root_states[env_ids, 2] += 0.1
         else:
             self.root_states[env_ids] = self.base_init_state
             self.root_states[env_ids, :3] += self.env_origins[env_ids]
@@ -359,7 +359,59 @@ class Y1v0hEvt1Command(LeggedRobot):
         distance_x = torch.abs(torch.mean(base_derivation_xy[:,:,0], dim=1))
         reward = torch.exp(-distance_x / self.cfg.rewards.tracking_sigma)
         return reward
-        
+
+    def _reward_head_los_distance(self):
+        """
+        Penalize the distance between the projected head/base point and the line of support.
+
+        Line of support:
+            the line passing through the two wheel/foot contact points in the horizontal plane.
+
+        Head/base point:
+            by default use the base/root projection.
+            If cfg.rewards.head_los_forward_offset > 0, use a virtual point in front of the base.
+        """
+
+        # 足端相对机体的位置，先在 world frame 下计算
+        foot_rel_world = self.foot_positions - self.root_states[:, 0:3].unsqueeze(1)
+
+        # 转到机体系/body frame，避免机器人转向时 x/y 判断混乱
+        foot0_base = quat_rotate_inverse(self.base_quat, foot_rel_world[:, 0, :])
+        foot1_base = quat_rotate_inverse(self.base_quat, foot_rel_world[:, 1, :])
+
+        p0 = foot0_base[:, :2]
+        p1 = foot1_base[:, :2]
+
+        # 双足支撑线方向
+        line_vec = p1 - p0
+        line_len = torch.norm(line_vec, dim=1).clamp(min=1e-4)
+
+        # 虚拟头部/机体投影点，机体系下 [x, y]
+        # offset=0 表示 base/root 点；offset>0 表示取 base 前方一点
+        head_x = getattr(self.cfg.rewards, "head_los_forward_offset", 0.0)
+
+        head_point = torch.zeros_like(p0)
+        head_point[:, 0] = head_x
+        head_point[:, 1] = 0.0
+
+        # 点到直线距离：|v x w| / |v|
+        # v = p1 - p0, w = head_point - p0
+        w = head_point - p0
+        distance = torch.abs(
+            line_vec[:, 0] * w[:, 1] - line_vec[:, 1] * w[:, 0]
+        ) / line_len
+
+        # 允许小范围偏差，超过 deadband 后才惩罚
+        deadband = getattr(self.cfg.rewards, "head_los_deadband", 0.05)
+        max_distance = getattr(self.cfg.rewards, "head_los_max_distance", 0.35)
+
+        distance = torch.clamp(distance, max=max_distance)
+        excess = torch.clamp(distance - deadband, min=0.0)
+
+        # 返回正的 penalty，配置里用负权重
+        return excess ** 2
+
+
     def _reward_body_feet_distance_x(self):
         # 保证两腿距离
         foot_distance_world = self.foot_positions[:,0,:]-self.foot_positions[:,1,:]

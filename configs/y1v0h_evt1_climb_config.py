@@ -93,9 +93,9 @@ class Y1v0hEvt1ClimbCfg( LeggedRobotCfg ):
         max_curriculum = 1.0
         
         max_curriculum_x = 1.0
-        max_curriculum_y = 1.0
+        max_curriculum_y = 0.5
         min_curriculum_x = -1.0
-        min_curriculum_y = -1.0
+        min_curriculum_y = -0.5
         max_curriculum_z = 1.0
 
         num_commands = 4  # default: lin_vel_x, lin_vel_y, ang_vel_yaw, heading (in heading mode ang_vel_yaw is recomputed from heading error)
@@ -118,7 +118,7 @@ class Y1v0hEvt1ClimbCfg( LeggedRobotCfg ):
         
         class ranges:
             lin_vel_x = [-1.0, 1.0]  # min max [m/s]
-            lin_vel_y = [-1.0, 1.0]  # min max [m/s]
+            lin_vel_y = [-0.5, 0.5]  # min max [m/s]
             ang_vel_yaw = [-1.0, 1.0]  # min max [rad/s]
             heading = [-3.14, 3.14]
 
@@ -141,6 +141,11 @@ class Y1v0hEvt1ClimbCfg( LeggedRobotCfg ):
         soft_dof_pos_limit = 0.9
         base_height_target = 0.5
         # acc_smoothness_sigma = 0.5
+        # 头部/机体投影点到双足支撑线的距离约束
+        # offset = 0.0 表示先用 base/root 点近似头部点，稳定后再考虑设为 0.10~0.15
+        head_los_forward_offset = 0.0
+        head_los_deadband = 0.05
+        head_los_max_distance = 0.35
         class scales( LeggedRobotCfg.rewards.scales ):
 
             torques = 0.0
@@ -177,6 +182,7 @@ class Y1v0hEvt1ClimbCfg( LeggedRobotCfg ):
             body_symmetry_z = 0.9
             heading = 10.0
             upward = 1.0
+            head_los_distance = -20.0
 
     class domain_rand( LeggedRobotCfg.domain_rand):
         randomize_friction = True
@@ -261,7 +267,15 @@ class Y1v0hEvt1ClimbCfg( LeggedRobotCfg ):
         # terrain types: [smooth slope, rough slope, stairs up, stairs down, discrete, stepping stones, gap, obstacles crossing, high platform]
         # terrain_proportions = [0.0, 0.0, 0.7, 0.3, 0.0, 0.0, 0.0]
         terrain_proportions = [0.1, 0.0, 0.8, 0.1, 0.0, 0.0, 0.0, 0.0, 0.0]
-        stairs_max_height = 0.15
+
+        slope = [0.0, 0.02]
+        step_height = [0.02, 0.16]
+        step_width_range = [0.51, 0.61]
+        discrete_obstacles_height = [0.05, 0.25]
+        pit_depth = [0.0, 1.0]
+        slope_treshold = 0.15
+
+
 
 class Y1v0hEvt1ClimbCfgPPO( LeggedRobotCfgPPO ):
     class algorithm( LeggedRobotCfgPPO.algorithm ):
@@ -307,7 +321,7 @@ class Y1v0hEvt1ClimbCfgPPO( LeggedRobotCfgPPO ):
         # One mp4 contains a 4x4 mosaic of 16 randomly selected environments.
         record_video = True
         video_interval = 500
-        video_duration = 8.0
+        video_duration = 6.0
         video_fps = 30
         video_num_envs = 16
         video_tile_rows = 4

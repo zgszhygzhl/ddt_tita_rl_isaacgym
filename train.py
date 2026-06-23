@@ -1,3 +1,4 @@
+import isaacgym
 import numpy as np
 import os
 from datetime import datetime
@@ -7,7 +8,7 @@ from configs.y1v0h_evt1_climb_config import Y1v0hEvt1Climb, Y1v0hEvt1ClimbCfg, Y
 from envs.no_constrains_legged_robot import Tita
 
 from global_config import ROOT_DIR, ENVS_DIR
-import isaacgym
+
 from utils.helpers import get_args
 from envs import LeggedRobot
 from utils.task_registry import task_registry

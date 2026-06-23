@@ -1,28 +1,27 @@
 conda activate ddtgym
-cd /root/gpufree-data/ddt_rl_isaacgym
+cd /root/gpufree-data/ddt_tita_rl_isaacgym
 
 训练
 python train.py \
   --task=d1h_evt1_climb \
   --headless \
   --num_envs 4096 \
-  --max_iterations 8000 \
+  --max_iterations 20000 \
   --resume \
-  --load_run Jun05_21-11-58_ \
-  --checkpoint 4400
+  --load_run Jun23_18-25-22_d1h_evt1_climb \
+  --checkpoint 3000
 
 推理 录制
-python scripts/simple_play.py \
-  --task=d1h_moe_base_play \
+python simple_play.py \
+  --task=d1h_evt1_climb \
   --load_run Jun06_09-51-25_ \
   --checkpoint 7400 \
   --headless
 
-ffmpeg -y -i /root/gpufree-data/ddt_rl_isaacgym/record.mp4 -c:v libx264 -pix_fmt yuv420p -movflags +faststart /root/gpufree-data/ddt_rl_isaacgym/record_h264.mp4
 
 看板
 tensorboard \
-  --logdir logs/d1h_moe_rec \
+  --logdir logs/d1h_evt1_climb \
   --host 0.0.0.0 \
   --port 6011
 
