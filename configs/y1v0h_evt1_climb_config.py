@@ -94,9 +94,9 @@ class Y1v0hEvt1ClimbCfg( LeggedRobotCfg ):
         
         max_curriculum_x = 1.0
         max_curriculum_y = 0.5
-        min_curriculum_x = -1.0
+        min_curriculum_x = -0.3
         min_curriculum_y = -0.5
-        max_curriculum_z = 1.0
+        max_curriculum_z = 0.5
 
         num_commands = 4  # default: lin_vel_x, lin_vel_y, ang_vel_yaw, heading (in heading mode ang_vel_yaw is recomputed from heading error)
         resampling_time = 10  # time before command are changed[s]
@@ -117,10 +117,10 @@ class Y1v0hEvt1ClimbCfg( LeggedRobotCfg ):
         buffer_smoothing_factor = 0.1    # 越小越平滑，响应也越慢。
         
         class ranges:
-            lin_vel_x = [-0.5, 0.5]  # min max [m/s]
+            lin_vel_x = [-0.0, 0.5]  # min max [m/s]
             lin_vel_y = [-0.2, 0.2]  # min max [m/s]
-            ang_vel_yaw = [-1.0, 1.0]  # min max [rad/s]
-            heading = [-3.14, 3.14]
+            ang_vel_yaw = [-0.2, 0.2]  # min max [rad/s]
+            heading = [-1.14, 1.14]
 
     class asset( LeggedRobotCfg.asset ):
 
@@ -172,8 +172,8 @@ class Y1v0hEvt1ClimbCfg( LeggedRobotCfg ):
             stand_still = -1
             foot_clearance= -0.0
             orientation=-10.0
-            no_gait = 5.0
-            both_feet_air = -10.0
+            no_gait = 2.0
+            both_feet_air = -20.0
             
             # 爬楼约束：鼓励身体保持在双足之间。
             body_pos_to_feet_x = 1.0
@@ -271,10 +271,10 @@ class Y1v0hEvt1ClimbCfg( LeggedRobotCfg ):
         include_act_obs_pair_buf = False
         # terrain types: [smooth slope, rough slope, stairs up, stairs down, discrete, stepping stones, gap, obstacles crossing, high platform]
         # terrain_proportions = [0.0, 0.0, 0.7, 0.3, 0.0, 0.0, 0.0]
-        terrain_proportions = [0.1, 0.0, 0.85, 0.05, 0.0, 0.0, 0.0, 0.0, 0.0]
+        terrain_proportions = [0.1, 0.0, 0.8, 0.1, 0.0, 0.0, 0.0, 0.0, 0.0]
 
         slope = [0.0, 0.02]
-        step_height = [0.015, 0.16]
+        step_height = [0.02, 0.16]
         step_width_range = [0.51, 0.61]
         discrete_obstacles_height = [0.05, 0.25]
         pit_depth = [0.0, 1.0]

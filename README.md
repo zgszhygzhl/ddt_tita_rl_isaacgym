@@ -16,6 +16,23 @@ python simple_play.py \
   --checkpoint 4000 \
   --headless
 
+python play_climb_adjustable.py \
+  --task=d1h_evt1_climb \
+  --headless \
+  --load_run Jun24_00-31-58_d1h_evt1_climb \
+  --checkpoint 10000 \
+  --play_vx 0.55 \
+  --play_vy 0.0 \
+  --play_yaw 0.0 \
+  --play_terrain stairs_down \
+  --play_stair_height 0.16 \
+  --play_step_width 0.55 \
+  --play_num_envs 16 \
+  --play_video_num_envs 4 \
+  --play_duration 20 \
+  --play_output play10000_16cm_v055.mp4
+
+
 
 看板
 tensorboard \
