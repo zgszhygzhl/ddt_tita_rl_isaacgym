@@ -147,9 +147,9 @@ class Y1v0hEvt1ClimbCfg( LeggedRobotCfg ):
         head_los_deadband = 0.05
         head_los_max_distance = 0.35
         # 双脚同时离地惩罚参数
-        both_feet_air_contact_force = 1.0
-        both_feet_air_grace_time = 0.04
-        both_feet_air_ramp_time = 0.08
+        both_feet_air_contact_force = 5.0
+        both_feet_air_grace_time = 0.02
+        both_feet_air_ramp_time = 0.03
         class scales( LeggedRobotCfg.rewards.scales ):
 
             torques = 0.0
@@ -172,8 +172,8 @@ class Y1v0hEvt1ClimbCfg( LeggedRobotCfg ):
             stand_still = -1
             foot_clearance= -0.0
             orientation=-10.0
-            no_gait = 2.0
-            both_feet_air = -20.0
+            no_gait = 1.0
+            both_feet_air = -80.0
             
             # 爬楼约束：鼓励身体保持在双足之间。
             body_pos_to_feet_x = 1.0
@@ -334,10 +334,11 @@ class Y1v0hEvt1ClimbCfgPPO( LeggedRobotCfgPPO ):
         video_tile_cols = 4
         video_tile_width = 320
         video_tile_height = 180
-        resume = False
-        resume_path = ''
+
+        # resume = False
+        # resume_path = ''
         # resume = True
-        # resume_path = '/root/gpufree-data/ddt_tita_rl_isaacgym/logs/d1h_evt1_climb/Jun23_18-25-22_d1h_evt1_climb/model_3000.pt'
+        # resume_path = '/root/gpufree-data/ddt_tita_rl_isaacgym/logs/d1h_evt1_climb/Jun24_00-31-58_d1h_evt1_climb/checkpoints/model_4000.pt'
  
 class Y1v0hEvt1Climb(Y1v0hEvt1Command):
     def _reward_tracking_lin_vel_x(self):

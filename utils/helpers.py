@@ -96,7 +96,6 @@ def parse_sim_params(args, cfg):
 def get_load_path(root, load_run=-1, checkpoint=-1):
     try:
         runs = os.listdir(root)
-        # TODO sort by date to handle change of month
         runs.sort()
         if 'exported' in runs:
             runs.remove('exported')
@@ -109,8 +108,8 @@ def get_load_path(root, load_run=-1, checkpoint=-1):
     else:
         load_run = os.path.join(root, load_run)
 
-    # New layout:
-    # logs/<experiment>/<run>/checkpoints/model_xxx.pt
+    # New layout: logs/<experiment>/<run>/checkpoints/model_xxx.pt
+    # Old layout fallback: logs/<experiment>/<run>/model_xxx.pt
     checkpoint_dir = os.path.join(load_run, "checkpoints")
     search_dir = checkpoint_dir if os.path.isdir(checkpoint_dir) else load_run
 
@@ -119,15 +118,12 @@ def get_load_path(root, load_run=-1, checkpoint=-1):
             file for file in os.listdir(search_dir)
             if file.startswith("model_") and file.endswith(".pt")
         ]
-
-        # Fallback for mixed old/new runs.
         if len(models) == 0 and search_dir != load_run:
             search_dir = load_run
             models = [
                 file for file in os.listdir(search_dir)
                 if file.startswith("model_") and file.endswith(".pt")
             ]
-
         if len(models) == 0:
             raise ValueError(f"No model_*.pt files found in {search_dir}")
 
@@ -143,9 +139,7 @@ def get_load_path(root, load_run=-1, checkpoint=-1):
         model = "model_{}.pt".format(checkpoint)
 
     load_path = os.path.join(search_dir, model)
-
     if not os.path.exists(load_path):
-        # Helpful fallback for old runs when checkpoints/ exists but target ckpt is in root.
         alt_path = os.path.join(load_run, model)
         if os.path.exists(alt_path):
             load_path = alt_path

@@ -7,7 +7,9 @@ python train.py \
   --headless \
   --num_envs 4096 \
   --max_iterations 20000 \
-  --resume 路径在配置文件里写
+  --resume \
+  --load_run Jun24_00-31-58_d1h_evt1_climb \
+  --checkpoint 4000
 
 推理 录制
 python simple_play.py \
@@ -19,18 +21,18 @@ python simple_play.py \
 python play_climb_adjustable.py \
   --task=d1h_evt1_climb \
   --headless \
-  --load_run Jun24_00-31-58_d1h_evt1_climb \
-  --checkpoint 10000 \
+  --load_run Jun24_12-47-41_d1h_evt1_climb \
+  --checkpoint 7400 \
   --play_vx 0.55 \
   --play_vy 0.0 \
   --play_yaw 0.0 \
   --play_terrain stairs_down \
-  --play_stair_height 0.16 \
+  --play_stair_height 0.10 \
   --play_step_width 0.55 \
   --play_num_envs 16 \
   --play_video_num_envs 4 \
   --play_duration 20 \
-  --play_output play10000_16cm_v055.mp4
+  --play_output play7400_14cm_v055.mp4
 
 
 
@@ -70,7 +72,7 @@ tmux attach -t d1h_train
 
 ![alt text](pictures_videos/output.gif)  
 
-本仓库强化学习部分基于：
+[text](../tita_rl_master/pictures_videos)本仓库强化学习部分基于：
 
 [N3PO Locomoton](https://github.com/zeonsunlightyu/LocomotionWithNP3O.git)
 

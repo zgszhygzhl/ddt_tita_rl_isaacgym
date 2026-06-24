@@ -1,5 +1,6 @@
 import time
 import os
+import re
 from collections import deque
 import statistics
 import warnings
@@ -16,7 +17,7 @@ from modules import ActorCriticRMA,ActorCriticBarlowTwins
 from algorithm import NP3O
 from envs.vec_env import VecEnv
 from modules.depth_backbone import DepthOnlyFCBackbone58x87, RecurrentDepthBackbone
-from utils.helpers import hard_phase_schedualer, partial_checkpoint_load
+from utils.helpers import hard_phase_schedualer, partial_checkpoint_load, get_load_path
 from utils.video_recorder import FfmpegVideoWriter
 from copy import copy, deepcopy
 
@@ -46,10 +47,9 @@ class OnConstraintPolicyRunner:
                                                       self.env.cfg.env.history_len,
                                                       self.env.num_actions,
                                                       **self.policy_cfg)
-        if self.cfg['resume']:
-            model_dict = torch.load(os.path.join(ROOT_DIR, self.cfg['resume_path']))
-            actor_critic.load_state_dict(model_dict['model_state_dict'])
-        
+        # Full checkpoint loading is handled after the algorithm/optimizer is created.
+        # Loading here would only restore actor_critic weights and would miss optimizer
+        # state plus learning iteration.
         actor_critic.to(self.device)
         
 
@@ -97,6 +97,8 @@ class OnConstraintPolicyRunner:
         self.tot_timesteps = 0
         self.tot_time = 0
         self.current_learning_iteration = 0
+        if self.cfg.get('resume', False):
+            self._load_training_checkpoint()
 
         # Training video recording. A single mp4 contains a mosaic of several
         # randomly selected environments. Cameras are created once to avoid
@@ -127,6 +129,61 @@ class OnConstraintPolicyRunner:
         if self.record_video:
             self._setup_train_video_camera()
 
+
+    def _checkpoint_path(self, iteration):
+        save_dir = self.checkpoint_dir if self.checkpoint_dir is not None else self.log_dir
+        if save_dir is None:
+            raise RuntimeError("Cannot save checkpoint because log_dir is None")
+        os.makedirs(save_dir, exist_ok=True)
+        return os.path.join(save_dir, f"model_{int(iteration)}.pt")
+
+    def _parse_iteration_from_checkpoint_path(self, path):
+        match = re.search(r"model_(\d+)\.pt$", os.path.basename(str(path)))
+        return int(match.group(1)) if match is not None else 0
+
+    def _resolve_resume_path(self):
+        resume_path = self.cfg.get("resume_path", "")
+        if resume_path not in [None, "", -1, "-1"]:
+            resume_path = str(resume_path)
+            if os.path.isabs(resume_path):
+                return resume_path
+            return os.path.join(ROOT_DIR, resume_path)
+
+        experiment_name = self.cfg.get("experiment_name", None)
+        if experiment_name is None:
+            raise ValueError("resume=True but neither resume_path nor experiment_name is set")
+
+        log_root = os.path.join(ROOT_DIR, "logs", experiment_name)
+        load_run = self.cfg.get("load_run", -1)
+        checkpoint = self.cfg.get("checkpoint", -1)
+        return get_load_path(log_root, load_run=load_run, checkpoint=checkpoint)
+
+    def _load_training_checkpoint(self):
+        resume_path = self._resolve_resume_path()
+        if not os.path.exists(resume_path):
+            raise FileNotFoundError(f"Resume checkpoint does not exist: {resume_path}")
+
+        print(f"[resume] loading checkpoint: {resume_path}")
+        loaded_dict = torch.load(resume_path, map_location=self.device)
+
+        if "model_state_dict" not in loaded_dict:
+            raise KeyError(f"Checkpoint has no model_state_dict: {resume_path}")
+        self.alg.actor_critic.load_state_dict(loaded_dict["model_state_dict"])
+
+        if "optimizer_state_dict" in loaded_dict:
+            try:
+                self.alg.optimizer.load_state_dict(loaded_dict["optimizer_state_dict"])
+                print("[resume] optimizer_state_dict loaded")
+            except Exception as error:
+                warnings.warn(f"Failed to load optimizer_state_dict: {error}")
+        else:
+            warnings.warn("Checkpoint has no optimizer_state_dict; optimizer will restart")
+
+        checkpoint_iter = loaded_dict.get("iter", None)
+        if checkpoint_iter is None or int(checkpoint_iter) <= 0:
+            checkpoint_iter = self._parse_iteration_from_checkpoint_path(resume_path)
+        self.current_learning_iteration = int(checkpoint_iter)
+        print(f"[resume] current_learning_iteration set to {self.current_learning_iteration}")
 
     def _setup_train_video_camera(self):
         """Create fixed world cameras for random training environments."""
@@ -480,11 +537,11 @@ class OnConstraintPolicyRunner:
             if self.log_dir is not None:
                 self.log(locals())
             if it % self.save_interval == 0:
-                self.save(self._checkpoint_path(it))
+                self.save(self._checkpoint_path(it), iteration=it)
             ep_infos.clear()
 
         self.current_learning_iteration += num_learning_iterations
-        self.save(self._checkpoint_path(self.current_learning_iteration))
+        self.save(self._checkpoint_path(self.current_learning_iteration), iteration=self.current_learning_iteration)
         self._close_train_video()
 
     def log(self, locs, width=80, pad=35):
@@ -564,11 +621,13 @@ class OnConstraintPolicyRunner:
                                locs['num_learning_iterations'] - locs['it']):.1f}s\n""")
         print(log_string)
 
-    def save(self, path, infos=None):
+    def save(self, path, infos=None, iteration=None):
+        if iteration is None:
+            iteration = self.current_learning_iteration
         state_dict = {
             'model_state_dict': self.alg.actor_critic.state_dict(),
             'optimizer_state_dict': self.alg.optimizer.state_dict(),
-            'iter': self.current_learning_iteration,
+            'iter': int(iteration),
             'infos': infos,
             }
         if self.if_depth:
