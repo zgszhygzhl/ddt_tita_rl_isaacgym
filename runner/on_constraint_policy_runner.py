@@ -526,6 +526,9 @@ class OnConstraintPolicyRunner:
                 start = stop
                 self.alg.compute_returns(critic_obs)
                 self.alg.compute_cost_returns(critic_obs)
+                ippo_metrics = {}
+                if hasattr(self.alg, "compute_ippo_scores"):
+                    ippo_metrics = self.alg.compute_ippo_scores()
 
             #update k value for better expolration
             k_value = self.alg.update_k_value(it)
@@ -577,6 +580,9 @@ class OnConstraintPolicyRunner:
         self.writer.add_scalar('Perf/total_fps', fps, locs['it'])
         self.writer.add_scalar('Perf/collection time', locs['collection_time'], locs['it'])
         self.writer.add_scalar('Perf/learning_time', locs['learn_time'], locs['it'])
+        if locs.get('ippo_metrics'):
+            for key, value in locs['ippo_metrics'].items():
+                self.writer.add_scalar('IPPO/' + key, value, locs['it'])
         if len(locs['rewbuffer']) > 0:
             self.writer.add_scalar('Train/mean_reward', statistics.mean(locs['rewbuffer']), locs['it'])
             self.writer.add_scalar('Train/mean_episode_length', statistics.mean(locs['lenbuffer']), locs['it'])

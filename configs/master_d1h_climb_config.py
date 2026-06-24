@@ -1,4 +1,4 @@
-﻿# SPDX-FileCopyrightText: Copyright (c) 2021 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: BSD-3-Clause
 # 
 # Redistribution and use in source and binary forms, with or without
@@ -34,7 +34,7 @@ from configs.y1v0h_evt1_command import Y1v0hEvt1Command
 from utils.math import wrap_to_pi
 import numpy as np
 
-class Y1v0hEvt1ClimbCfg( LeggedRobotCfg ):
+class MasterD1HClimbCfg( LeggedRobotCfg ):
     class env(LeggedRobotCfg.env):
         num_envs = 4096
 
@@ -282,7 +282,7 @@ class Y1v0hEvt1ClimbCfg( LeggedRobotCfg ):
 
 
 
-class Y1v0hEvt1ClimbCfgPPO( LeggedRobotCfgPPO ):
+class MasterD1HClimbCfgPPO( LeggedRobotCfgPPO ):
     class algorithm( LeggedRobotCfgPPO.algorithm ):
         entropy_coef = 0.01
         learning_rate = 1.e-3
@@ -313,8 +313,8 @@ class Y1v0hEvt1ClimbCfgPPO( LeggedRobotCfgPPO ):
         imi_flag = True
       
     class runner( LeggedRobotCfgPPO.runner ):
-        run_name = 'd1h_evt1_climb'
-        experiment_name = 'd1h_evt1_climb'
+        run_name = 'master_d1h_climb'
+        experiment_name = 'master_d1h_climb'
         policy_class_name = 'ActorCriticBarlowTwins'
         runner_class_name = 'OnConstraintPolicyRunner'
         algorithm_class_name = 'NP3O'
@@ -338,9 +338,9 @@ class Y1v0hEvt1ClimbCfgPPO( LeggedRobotCfgPPO ):
         # resume = False
         # resume_path = ''
         # resume = True
-        # resume_path = '/root/gpufree-data/ddt_tita_rl_isaacgym/logs/d1h_evt1_climb/Jun24_00-31-58_d1h_evt1_climb/checkpoints/model_4000.pt'
+        # resume_path = '/root/gpufree-data/ddt_tita_rl_isaacgym/logs/master_d1h_climb/Jun24_00-31-58_master_d1h_climb/checkpoints/model_4000.pt'
  
-class Y1v0hEvt1Climb(Y1v0hEvt1Command):
+class MasterD1HClimb(Y1v0hEvt1Command):
     def _reward_tracking_lin_vel_x(self):
         # 跟踪平滑后的x方向线速度命令。
         lin_vel_x_error = torch.square(self.commands_given[:, 0] - self.base_lin_vel[:, 0])

@@ -170,6 +170,20 @@ def update_cfg_from_args(env_cfg, cfg_train, args):
             cfg_train.runner.load_run = args.load_run
         if args.checkpoint is not None:
             cfg_train.runner.checkpoint = args.checkpoint
+        if args.use_ippo:
+            cfg_train.algorithm.use_ippo = True
+        if args.ippo_select_mode is not None:
+            cfg_train.algorithm.ippo_select_mode = args.ippo_select_mode
+        if args.ippo_retain_ratio is not None:
+            cfg_train.algorithm.ippo_retain_ratio = args.ippo_retain_ratio
+        if args.ippo_weight_clip is not None:
+            cfg_train.algorithm.ippo_weight_clip = args.ippo_weight_clip
+        if args.ippo_score_mode is not None:
+            cfg_train.algorithm.ippo_score_mode = args.ippo_score_mode
+        if args.ippo_threshold is not None:
+            cfg_train.algorithm.ippo_threshold = args.ippo_threshold
+        if args.ippo_run_name_suffix is not None:
+            cfg_train.runner.run_name = f"{cfg_train.runner.run_name}_{args.ippo_run_name_suffix}" if cfg_train.runner.run_name else args.ippo_run_name_suffix
 
     return env_cfg, cfg_train
 
@@ -196,6 +210,20 @@ def get_args():
         {"name": "--seed", "type": int, "help": "Random seed. Overrides config file if provided."},
         {"name": "--max_iterations", "type": int,
          "help": "Maximum number of training iterations. Overrides config file if provided."},
+        {"name": "--use_ippo", "action": "store_true", "default": False, "help": "Enable IPPO-core scoring and actor-loss weighting."},
+        {"name": "--ippo_select_mode", "type": str, "default": None,
+         "choices": ["none", "topk", "threshold", "random_same_ratio", "weight_only"],
+         "help": "IPPO sample selection mode."},
+        {"name": "--ippo_retain_ratio", "type": float, "default": None,
+         "help": "Retained rollout sample ratio for IPPO topk/random modes."},
+        {"name": "--ippo_weight_clip", "type": float, "default": None,
+         "help": "Maximum normalized IPPO sample weight."},
+        {"name": "--ippo_score_mode", "type": str, "default": None,
+         "help": "IPPO score mode: sm_inverse, log_leverage, leverage."},
+        {"name": "--ippo_threshold", "type": float, "default": None,
+         "help": "IPPO score threshold for threshold selection mode."},
+        {"name": "--ippo_run_name_suffix", "type": str, "default": None,
+         "help": "Suffix appended to the configured run name for IPPO ablations."},
     ]
     # parse arguments
     args = gymutil.parse_arguments(
