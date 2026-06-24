@@ -6,7 +6,6 @@ import torch.optim as optim
 from modules.actor_critic import ActorCriticRMA
 from runner.rollout_storage import RolloutStorageWithCost
 from utils import unpad_trajectories
-from utils.ippo_qii import IPPOQIIComputer, build_ippo_statistics, make_ippo_mask_and_weight, safe_corr
 
 class NP3O:
     actor_critic: ActorCriticRMA
@@ -33,28 +32,6 @@ class NP3O:
                  device='cpu',
                  dagger_update_freq=20,
                  priv_reg_coef_schedual = [0, 0, 0],
-                 use_ippo=False,
-                 ippo_state_source="obs_action",
-                 ippo_score_mode="sm_inverse",
-                 ippo_z_dim_limit=64,
-                 ippo_z_norm=True,
-                 ippo_ridge=1e-3,
-                 ippo_reset_T_each_rollout=True,
-                 ippo_select_mode="none",
-                 ippo_threshold=0.5,
-                 ippo_retain_ratio=0.5,
-                 ippo_min_retain_ratio=0.1,
-                 ippo_max_retain_ratio=1.0,
-                 ippo_weight_mode="normalized_score",
-                 ippo_weight_clip=3.0,
-                 ippo_weight_eps=1e-6,
-                 ippo_apply_to_actor=True,
-                 ippo_apply_to_critic=False,
-                 ippo_apply_to_entropy=False,
-                 ippo_log_analysis=True,
-                 ippo_analysis_interval=10,
-                 ippo_gradient_probe_interval=50,
-                 ippo_gradient_probe_num_batches=8,
                  **kwargs
                  ):
 
@@ -98,44 +75,9 @@ class NP3O:
         self.k_value = k_value
 
         self.substeps = 1
-        self.use_ippo = use_ippo
-        self.ippo_apply_to_actor = ippo_apply_to_actor
-        self.ippo_apply_to_critic = ippo_apply_to_critic
-        self.ippo_apply_to_entropy = ippo_apply_to_entropy
-        self.ippo_log_analysis = ippo_log_analysis
-        self.ippo_analysis_interval = ippo_analysis_interval
-        self.ippo_gradient_probe_interval = ippo_gradient_probe_interval
-        self.ippo_gradient_probe_num_batches = ippo_gradient_probe_num_batches
-        self.ippo_cfg = {
-            "ippo_state_source": ippo_state_source,
-            "ippo_score_mode": ippo_score_mode,
-            "ippo_z_dim_limit": ippo_z_dim_limit,
-            "ippo_z_norm": ippo_z_norm,
-            "ippo_ridge": ippo_ridge,
-            "ippo_reset_T_each_rollout": ippo_reset_T_each_rollout,
-            "ippo_select_mode": ippo_select_mode,
-            "ippo_threshold": ippo_threshold,
-            "ippo_retain_ratio": ippo_retain_ratio,
-            "ippo_min_retain_ratio": ippo_min_retain_ratio,
-            "ippo_max_retain_ratio": ippo_max_retain_ratio,
-            "ippo_weight_mode": ippo_weight_mode,
-            "ippo_weight_clip": ippo_weight_clip,
-            "ippo_weight_eps": ippo_weight_eps,
-        }
-        self.ippo_qii = None
-        self.ippo_metrics = {}
 
     def init_storage(self, num_envs, num_transitions_per_env, actor_obs_shape, critic_obs_shape, action_shape,cost_shape,cost_d_values):
         self.storage = RolloutStorageWithCost(num_envs, num_transitions_per_env, actor_obs_shape,  critic_obs_shape, action_shape,cost_shape,cost_d_values,self.device)
-        if self.use_ippo:
-            self.ippo_qii = IPPOQIIComputer(
-                z_dim_limit=self.ippo_cfg["ippo_z_dim_limit"],
-                ridge=self.ippo_cfg["ippo_ridge"],
-                score_mode=self.ippo_cfg["ippo_score_mode"],
-                z_norm=self.ippo_cfg["ippo_z_norm"],
-                device=self.device,
-                eps=self.ippo_cfg["ippo_weight_eps"],
-            )
 
     def test_mode(self):
         self.actor_critic.test()
@@ -189,58 +131,13 @@ class NP3O:
         last_cost_values = self.actor_critic.evaluate_cost(obs).detach()
         self.storage.compute_cost_returns(last_cost_values,self.gamma,self.lam)
 
-    def compute_ippo_scores(self):
-        if not self.use_ippo:
-            self.ippo_metrics = {}
-            return self.ippo_metrics
-        if self.ippo_qii is None:
-            self.ippo_qii = IPPOQIIComputer(
-                z_dim_limit=self.ippo_cfg["ippo_z_dim_limit"],
-                ridge=self.ippo_cfg["ippo_ridge"],
-                score_mode=self.ippo_cfg["ippo_score_mode"],
-                z_norm=self.ippo_cfg["ippo_z_norm"],
-                device=self.device,
-                eps=self.ippo_cfg["ippo_weight_eps"],
-            )
-        scores, qii_info = self.ippo_qii.compute_scores(self.storage.observations, self.storage.actions)
-        masks, weights, select_info = make_ippo_mask_and_weight(scores, self.ippo_cfg)
-        self.storage.set_ippo(scores, masks, weights)
-        self.ippo_metrics = build_ippo_statistics(
-            scores,
-            masks,
-            weights,
-            self.storage.advantages,
-            self.storage.returns,
-            self.storage.values,
-        )
-        self.ippo_metrics.update(select_info)
-        self.ippo_metrics.update(qii_info)
-        return self.ippo_metrics
-
-    def compute_surrogate_loss(self,actions_log_prob_batch,old_actions_log_prob_batch,advantages_batch,ippo_mask_batch=None,ippo_weight_batch=None):
+    def compute_surrogate_loss(self,actions_log_prob_batch,old_actions_log_prob_batch,advantages_batch):
         ratio = torch.exp(actions_log_prob_batch - torch.squeeze(old_actions_log_prob_batch))
         surrogate = -torch.squeeze(advantages_batch) * ratio
         surrogate_clipped = -torch.squeeze(advantages_batch) * torch.clamp(ratio, 1.0 - self.clip_param,
                                                                                1.0 + self.clip_param)
-        loss_each = torch.max(surrogate, surrogate_clipped)
-        if self.use_ippo and self.ippo_apply_to_actor and ippo_mask_batch is not None and ippo_weight_batch is not None:
-            valid = ippo_mask_batch.reshape(loss_each.shape).float()
-            weight = ippo_weight_batch.reshape(loss_each.shape).float()
-            denom = valid.sum()
-            if denom > 0:
-                surrogate_loss = (loss_each * weight * valid).sum() / (denom + self.ippo_cfg["ippo_weight_eps"])
-            else:
-                surrogate_loss = loss_each.mean()
-        else:
-            surrogate_loss = loss_each.mean()
+        surrogate_loss = torch.max(surrogate, surrogate_clipped).mean()
         return surrogate_loss
-
-    def compute_surrogate_loss_each(self,actions_log_prob_batch,old_actions_log_prob_batch,advantages_batch):
-        ratio = torch.exp(actions_log_prob_batch - torch.squeeze(old_actions_log_prob_batch))
-        surrogate = -torch.squeeze(advantages_batch) * ratio
-        surrogate_clipped = -torch.squeeze(advantages_batch) * torch.clamp(ratio, 1.0 - self.clip_param,
-                                                                               1.0 + self.clip_param)
-        return torch.max(surrogate, surrogate_clipped)
     
     def compute_cost_surrogate_loss(self,actions_log_prob_batch,old_actions_log_prob_batch,cost_advantages_batch):
         # cost_advantages_batch : batch_size,num_type_costs
@@ -290,16 +187,13 @@ class NP3O:
         mean_viol_loss = 0
         mean_surrogate_loss = 0
         mean_imitation_loss = 0
-        mean_ippo_corr_score_loss = 0.0
-        ippo_corr_count = 0
         
         if self.actor_critic.is_recurrent:
             generator = self.storage.reccurent_mini_batch_generator(self.num_mini_batches, self.num_learning_epochs)
         else:
             generator = self.storage.mini_batch_generator(self.num_mini_batches, self.num_learning_epochs)
         for obs_batch, critic_obs_batch, actions_batch, target_values_batch, advantages_batch, returns_batch, old_actions_log_prob_batch, \
-            old_mu_batch, old_sigma_batch, hid_states_batch, masks_batch, target_cost_values_batch,cost_advantages_batch,cost_returns_batch,cost_violation_batch,\
-            ippo_score_batch,ippo_mask_batch,ippo_weight_batch in generator:
+            old_mu_batch, old_sigma_batch, hid_states_batch, masks_batch, target_cost_values_batch,cost_advantages_batch,cost_returns_batch,cost_violation_batch in generator:
 
                 self.actor_critic.act(obs_batch, masks=masks_batch, hidden_states=hid_states_batch[0]) # match distribution dimension
                 actions_log_prob_batch = self.actor_critic.get_actions_log_prob(actions_batch)
@@ -327,13 +221,7 @@ class NP3O:
 
                 surrogate_loss = self.compute_surrogate_loss(actions_log_prob_batch=actions_log_prob_batch,
                                                          old_actions_log_prob_batch=old_actions_log_prob_batch,
-                                                         advantages_batch=advantages_batch,
-                                                         ippo_mask_batch=ippo_mask_batch,
-                                                         ippo_weight_batch=ippo_weight_batch)
-                if self.use_ippo:
-                    loss_each = self.compute_surrogate_loss_each(actions_log_prob_batch, old_actions_log_prob_batch, advantages_batch)
-                    mean_ippo_corr_score_loss += float(safe_corr(ippo_score_batch, loss_each.detach().abs()).detach().cpu())
-                    ippo_corr_count += 1
+                                                         advantages_batch=advantages_batch)
 
                 # Cost voilation
                 viol_loss = self.compute_viol(actions_log_prob_batch=actions_log_prob_batch,
@@ -395,8 +283,6 @@ class NP3O:
         mean_viol_loss /= num_updates
         mean_surrogate_loss /= num_updates
         mean_imitation_loss /= num_updates*self.substeps
-        if self.use_ippo and ippo_corr_count > 0:
-            self.ippo_metrics["corr_score_loss"] = mean_ippo_corr_score_loss / ippo_corr_count
 
         self.storage.clear()
    

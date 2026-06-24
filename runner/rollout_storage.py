@@ -73,9 +73,6 @@ class RolloutStorage:
         self.values = torch.zeros(num_transitions_per_env, num_envs, 1, device=self.device)
         self.returns = torch.zeros(num_transitions_per_env, num_envs, 1, device=self.device)
         self.advantages = torch.zeros(num_transitions_per_env, num_envs, 1, device=self.device)
-        self.ippo_scores = torch.zeros(num_transitions_per_env, num_envs, 1, device=self.device)
-        self.ippo_masks = torch.ones(num_transitions_per_env, num_envs, 1, device=self.device)
-        self.ippo_weights = torch.ones(num_transitions_per_env, num_envs, 1, device=self.device)
         self.mu = torch.zeros(num_transitions_per_env, num_envs, *actions_shape, device=self.device)
         self.sigma = torch.zeros(num_transitions_per_env, num_envs, *actions_shape, device=self.device)
 
@@ -124,11 +121,6 @@ class RolloutStorage:
     def clear(self):
         self.step = 0
 
-    def set_ippo(self, scores, masks, weights):
-        self.ippo_scores.copy_(scores.view_as(self.ippo_scores))
-        self.ippo_masks.copy_(masks.view_as(self.ippo_masks).float())
-        self.ippo_weights.copy_(weights.view_as(self.ippo_weights))
-
     def compute_returns(self, last_values, gamma, lam):
         advantage = 0
         for step in reversed(range(self.num_transitions_per_env)):
@@ -172,9 +164,6 @@ class RolloutStorage:
         advantages = self.advantages.flatten(0, 1)
         old_mu = self.mu.flatten(0, 1)
         old_sigma = self.sigma.flatten(0, 1)
-        ippo_scores = self.ippo_scores.flatten(0, 1)
-        ippo_masks = self.ippo_masks.flatten(0, 1)
-        ippo_weights = self.ippo_weights.flatten(0, 1)
 
         for epoch in range(num_epochs):
             for i in range(num_mini_batches):
@@ -192,14 +181,10 @@ class RolloutStorage:
                 advantages_batch = advantages[batch_idx]
                 old_mu_batch = old_mu[batch_idx]
                 old_sigma_batch = old_sigma[batch_idx]
-                ippo_score_batch = ippo_scores[batch_idx]
-                ippo_mask_batch = ippo_masks[batch_idx]
-                ippo_weight_batch = ippo_weights[batch_idx]
 
                 
                 yield obs_batch, critic_observations_batch, actions_batch, target_values_batch, advantages_batch, returns_batch, \
-                       old_actions_log_prob_batch, old_mu_batch, old_sigma_batch, (None, None), None, \
-                       ippo_score_batch, ippo_mask_batch, ippo_weight_batch
+                       old_actions_log_prob_batch, old_mu_batch, old_sigma_batch, (None, None), None
 
     # for RNNs only
     def reccurent_mini_batch_generator(self, num_mini_batches, num_epochs=8):
@@ -235,9 +220,6 @@ class RolloutStorage:
                 advantages_batch = self.advantages[:, start:stop]
                 values_batch = self.values[:, start:stop]
                 old_actions_log_prob_batch = self.actions_log_prob[:, start:stop]
-                ippo_score_batch = self.ippo_scores[:, start:stop]
-                ippo_mask_batch = self.ippo_masks[:, start:stop]
-                ippo_weight_batch = self.ippo_weights[:, start:stop]
 
                 # reshape to [num_envs, time, num layers, hidden dim] (original shape: [time, num_layers, num_envs, hidden_dim])
                 # then take only time steps after dones (flattens num envs and time dimensions),
@@ -252,8 +234,7 @@ class RolloutStorage:
                 hid_c_batch = hid_c_batch[0] if len(hid_c_batch)==1 else hid_a_batch
 
                 yield obs_batch, critic_obs_batch, actions_batch, values_batch, advantages_batch, returns_batch, \
-                       old_actions_log_prob_batch, old_mu_batch, old_sigma_batch, (hid_a_batch, hid_c_batch), masks_batch, \
-                       ippo_score_batch, ippo_mask_batch, ippo_weight_batch
+                       old_actions_log_prob_batch, old_mu_batch, old_sigma_batch, (hid_a_batch, hid_c_batch), masks_batch
                 
                 first_traj = last_traj
 
@@ -308,9 +289,6 @@ class RolloutStorageWithCost:
         self.cost_advantages = torch.zeros(num_transitions_per_env, num_envs, *cost_shape, device=self.device)
         self.cost_violation = torch.zeros(num_transitions_per_env, num_envs, *cost_shape, device=self.device)
         self.cost_d_values = cost_d_values
-        self.ippo_scores = torch.zeros(num_transitions_per_env, num_envs, 1, device=self.device)
-        self.ippo_masks = torch.ones(num_transitions_per_env, num_envs, 1, device=self.device)
-        self.ippo_weights = torch.ones(num_transitions_per_env, num_envs, 1, device=self.device)
     
         self.mu = torch.zeros(num_transitions_per_env, num_envs, *actions_shape, device=self.device)
         self.sigma = torch.zeros(num_transitions_per_env, num_envs, *actions_shape, device=self.device)
@@ -360,11 +338,6 @@ class RolloutStorageWithCost:
 
     def clear(self):
         self.step = 0
-
-    def set_ippo(self, scores, masks, weights):
-        self.ippo_scores.copy_(scores.view_as(self.ippo_scores))
-        self.ippo_masks.copy_(masks.view_as(self.ippo_masks).float())
-        self.ippo_weights.copy_(weights.view_as(self.ippo_weights))
 
     def compute_returns(self, last_values, gamma, lam):
         advantage = 0
@@ -439,9 +412,6 @@ class RolloutStorageWithCost:
         cost_advantages = self.cost_advantages.flatten(0, 1)
         old_mu = self.mu.flatten(0, 1)
         old_sigma = self.sigma.flatten(0, 1)
-        ippo_scores = self.ippo_scores.flatten(0, 1)
-        ippo_masks = self.ippo_masks.flatten(0, 1)
-        ippo_weights = self.ippo_weights.flatten(0, 1)
 
         for epoch in range(num_epochs):
             for i in range(num_mini_batches):
@@ -463,15 +433,11 @@ class RolloutStorageWithCost:
                 cost_advantages_batch = cost_advantages[batch_idx]
                 old_mu_batch = old_mu[batch_idx]
                 old_sigma_batch = old_sigma[batch_idx]
-                ippo_score_batch = ippo_scores[batch_idx]
-                ippo_mask_batch = ippo_masks[batch_idx]
-                ippo_weight_batch = ippo_weights[batch_idx]
 
                 
                 yield obs_batch, critic_observations_batch, actions_batch, target_values_batch, advantages_batch, returns_batch, \
                     old_actions_log_prob_batch, old_mu_batch, old_sigma_batch, (None, None), None,\
-                    target_cost_values_batch,cost_advantages_batch,cost_returns_batch,cost_violation_batch,\
-                    ippo_score_batch,ippo_mask_batch,ippo_weight_batch
+                    target_cost_values_batch,cost_advantages_batch,cost_returns_batch,cost_violation_batch
 
     # for RNNs only
     def reccurent_mini_batch_generator(self, num_mini_batches, num_epochs=8):
@@ -511,9 +477,6 @@ class RolloutStorageWithCost:
                 values_batch = self.values[:, start:stop]
                 cost_values_batch = self.cost_values[:, start:stop]
                 old_actions_log_prob_batch = self.actions_log_prob[:, start:stop]
-                ippo_score_batch = self.ippo_scores[:, start:stop]
-                ippo_mask_batch = self.ippo_masks[:, start:stop]
-                ippo_weight_batch = self.ippo_weights[:, start:stop]
 
                 # reshape to [num_envs, time, num layers, hidden dim] (original shape: [time, num_layers, num_envs, hidden_dim])
                 # then take only time steps after dones (flattens num envs and time dimensions),
@@ -529,7 +492,6 @@ class RolloutStorageWithCost:
 
                 yield obs_batch, critic_obs_batch, actions_batch, values_batch, advantages_batch, returns_batch, \
                        old_actions_log_prob_batch, old_mu_batch, old_sigma_batch, (hid_a_batch, hid_c_batch), masks_batch,\
-                       cost_values_batch,cost_advantage_batch,cost_returns_batch,cost_violation_batch,\
-                       ippo_score_batch,ippo_mask_batch,ippo_weight_batch
+                       cost_values_batch,cost_advantage_batch,cost_returns_batch,cost_violation_batch
                 
                 first_traj = last_traj

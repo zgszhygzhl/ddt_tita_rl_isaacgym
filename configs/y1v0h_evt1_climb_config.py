@@ -172,8 +172,8 @@ class Y1v0hEvt1ClimbCfg( LeggedRobotCfg ):
             stand_still = -1
             foot_clearance= -0.0
             orientation=-10.0
-            no_gait = 5.0
-            both_feet_air = -00.0
+            no_gait = 1.0
+            both_feet_air = -80.0
             
             # 爬楼约束：鼓励身体保持在双足之间。
             body_pos_to_feet_x = 1.0

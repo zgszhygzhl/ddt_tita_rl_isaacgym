@@ -5,8 +5,6 @@ from datetime import datetime
 from configs.tita_constraint_config import TitaConstraintRoughCfg, TitaConstraintRoughCfgPPO
 from configs.d1h_constraint_config import D1HConstraintRoughCfg, D1HConstraintRoughCfgPPO
 from configs.y1v0h_evt1_climb_config import Y1v0hEvt1Climb, Y1v0hEvt1ClimbCfg, Y1v0hEvt1ClimbCfgPPO
-from configs.master_d1h_climb_config import MasterD1HClimb, MasterD1HClimbCfg, MasterD1HClimbCfgPPO
-from configs.master_d1h_climb_ippo_config import MasterD1HClimbIPPOCfg, MasterD1HClimbIPPOCfgPPO
 from envs.no_constrains_legged_robot import Tita
 
 from global_config import ROOT_DIR, ENVS_DIR
@@ -37,8 +35,6 @@ if __name__ == '__main__':
     task_registry.register("tita_constraint", LeggedRobot, TitaConstraintRoughCfg(), TitaConstraintRoughCfgPPO())
     task_registry.register("d1h_constraint", LeggedRobot, D1HConstraintRoughCfg(), D1HConstraintRoughCfgPPO())
     task_registry.register("d1h_evt1_climb", Y1v0hEvt1Climb, Y1v0hEvt1ClimbCfg(), Y1v0hEvt1ClimbCfgPPO())
-    task_registry.register("master_d1h_climb", MasterD1HClimb, MasterD1HClimbCfg(), MasterD1HClimbCfgPPO())
-    task_registry.register("master_d1h_climb_ippo", MasterD1HClimb, MasterD1HClimbIPPOCfg(), MasterD1HClimbIPPOCfgPPO())
 
     args = get_args()
     train(args)
