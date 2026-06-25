@@ -14,14 +14,17 @@ python play_climb_adjustable.py \
   --play_num_envs 16 \
   --play_duration 20
 """
-from isaacgym import gymapi
+
 import argparse
 import os
 import sys
 
 import numpy as np
 import torch
-
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+from isaacgym import gymapi
 from PIL import Image, ImageDraw, ImageFont
 
 from envs import LeggedRobot
@@ -78,6 +81,24 @@ def parse_adjustable_args():
     parser.add_argument("--play_slope", type=float, default=0.0)
     parser.add_argument("--play_seed", type=int, default=0)
     parser.add_argument("--play_output", type=str, default="play_adjustable.mp4")
+    parser.add_argument(
+        "--play_metrics_output",
+        type=str,
+        default="",
+        help="PNG path for torque and command-tracking curves. Default: <play_output>_metrics.png",
+    )
+    parser.add_argument(
+        "--play_metrics_env_id",
+        type=int,
+        default=-1,
+        help="Environment id used for metrics plotting. Default: first selected video env.",
+    )
+    parser.add_argument(
+        "--play_metrics_max_points",
+        type=int,
+        default=2500,
+        help="Maximum points drawn in the PNG; data are downsampled only for plotting.",
+    )
 
     play_args, remaining = parser.parse_known_args()
     sys.argv = [sys.argv[0]] + remaining
@@ -292,6 +313,158 @@ def capture_mosaic_frame(env, env_ids, cam_handles, step_i, play_args):
     return np.concatenate(rows, axis=0)
 
 
+
+def _safe_dof_names(env):
+    """Return DOF names if the environment exposes them; otherwise use joint_0..."""
+    names = getattr(env, "dof_names", None)
+    if names is None:
+        num_dof = int(getattr(env, "num_dof", 0))
+        return [f"joint_{i}" for i in range(num_dof)]
+    return [str(x) for x in names]
+
+
+def _resolve_metrics_output(play_args, video_out_path):
+    """Resolve metric PNG path from CLI arg or video output path."""
+    if play_args.play_metrics_output:
+        out_path = play_args.play_metrics_output
+        if not os.path.isabs(out_path):
+            out_path = os.path.join(ROOT_DIR, "logs", out_path)
+        return out_path
+    root, _ = os.path.splitext(video_out_path)
+    return root + "_metrics.png"
+
+
+def _downsample_for_plot(arr, max_points):
+    """Uniformly downsample a 1D/2D numpy array for readable plotting."""
+    arr = np.asarray(arr)
+    n = arr.shape[0]
+    max_points = int(max_points)
+    if max_points <= 0 or n <= max_points:
+        return arr, np.arange(n)
+    idx = np.linspace(0, n - 1, max_points).astype(np.int64)
+    return arr[idx], idx
+
+
+def collect_metrics_step(env, metric_env_id, t_value, storage):
+    """Collect one timestep of torques and command tracking for one env."""
+    eid = int(metric_env_id)
+    storage["t"].append(float(t_value))
+
+    torque = env.torques[eid].detach().cpu().numpy().copy() if hasattr(env, "torques") else np.zeros(int(getattr(env, "num_actions", 0)))
+    storage["torques"].append(torque)
+
+    cmd = env.commands[eid, :3].detach().cpu().numpy().copy() if hasattr(env, "commands") else np.zeros(3)
+    if hasattr(env, "commands_given"):
+        cmd_given = env.commands_given[eid, :3].detach().cpu().numpy().copy()
+    else:
+        cmd_given = cmd.copy()
+
+    vel = np.array([
+        float(env.base_lin_vel[eid, 0].item()),
+        float(env.base_lin_vel[eid, 1].item()),
+        float(env.base_ang_vel[eid, 2].item()),
+    ], dtype=np.float32)
+
+    storage["cmd"].append(cmd)
+    storage["cmd_given"].append(cmd_given)
+    storage["vel"].append(vel)
+
+
+def save_metrics_plot(env, storage, metric_env_id, out_png, play_args):
+    """Save one PNG dashboard: joint torques + vx/vy/yaw command tracking."""
+    if len(storage["t"]) == 0:
+        print("[play] no metrics collected; skip metrics plot")
+        return
+
+    os.makedirs(os.path.dirname(out_png), exist_ok=True)
+
+    t = np.asarray(storage["t"], dtype=np.float32)
+    torques = np.asarray(storage["torques"], dtype=np.float32)
+    cmd = np.asarray(storage["cmd"], dtype=np.float32)
+    cmd_given = np.asarray(storage["cmd_given"], dtype=np.float32)
+    vel = np.asarray(storage["vel"], dtype=np.float32)
+
+    max_points = int(getattr(play_args, "play_metrics_max_points", 2500))
+    t_ds, idx = _downsample_for_plot(t, max_points)
+    torques_ds = torques[idx]
+    cmd_ds = cmd[idx]
+    cmd_given_ds = cmd_given[idx]
+    vel_ds = vel[idx]
+
+    dof_names = _safe_dof_names(env)
+    if len(dof_names) != torques.shape[1]:
+        dof_names = [f"joint_{i}" for i in range(torques.shape[1])]
+
+    torque_limits = None
+    if hasattr(env, "torque_limits"):
+        torque_limits = env.torque_limits.detach().cpu().numpy().astype(np.float32)
+        if torque_limits.shape[0] != torques.shape[1]:
+            torque_limits = None
+
+    abs_torque = np.abs(torques)
+    max_abs = abs_torque.max(axis=0)
+    rms = np.sqrt(np.mean(np.square(torques), axis=0))
+    if torque_limits is not None:
+        eps = 1e-6
+        sat = abs_torque >= (0.98 * torque_limits[None, :] - eps)
+        sat_ratio = 100.0 * sat.mean(axis=0)
+    else:
+        sat_ratio = np.zeros_like(max_abs)
+
+    fig, axes = plt.subplots(4, 1, figsize=(15, 14), sharex=True)
+
+    ax = axes[0]
+    for j in range(torques_ds.shape[1]):
+        label = dof_names[j]
+        if torque_limits is not None:
+            label = f"{label} max={max_abs[j]:.1f}/{torque_limits[j]:.1f}Nm sat={sat_ratio[j]:.1f}%"
+        else:
+            label = f"{label} max={max_abs[j]:.1f}Nm"
+        ax.plot(t_ds, torques_ds[:, j], linewidth=1.0, label=label)
+    if torque_limits is not None and len(np.unique(np.round(torque_limits, 4))) == 1:
+        lim = float(torque_limits[0])
+        ax.axhline(lim, linestyle="--", linewidth=0.8)
+        ax.axhline(-lim, linestyle="--", linewidth=0.8)
+    ax.set_ylabel("torque [Nm]")
+    ax.set_title(
+        f"Joint torques and command tracking | env={metric_env_id} | "
+        f"terrain={play_args.play_terrain} | duration={t[-1]:.2f}s"
+    )
+    ax.grid(True, alpha=0.3)
+    ax.legend(loc="upper right", fontsize=7, ncol=2)
+
+    labels = [
+        ("vx", "linear x [m/s]", 0),
+        ("vy", "linear y [m/s]", 1),
+        ("yaw", "yaw rate [rad/s]", 2),
+    ]
+    for ax, (name, ylabel, k) in zip(axes[1:], labels):
+        ax.plot(t_ds, cmd_ds[:, k], linewidth=1.0, label=f"cmd {name}")
+        ax.plot(t_ds, cmd_given_ds[:, k], linewidth=1.0, label=f"given {name}")
+        ax.plot(t_ds, vel_ds[:, k], linewidth=1.0, label=f"actual {name}")
+        err = vel[:, k] - cmd_given[:, k]
+        mae = float(np.mean(np.abs(err)))
+        rmse = float(np.sqrt(np.mean(np.square(err))))
+        ax.set_ylabel(ylabel)
+        ax.set_title(f"{name} tracking: MAE={mae:.3f}, RMSE={rmse:.3f}")
+        ax.grid(True, alpha=0.3)
+        ax.legend(loc="upper right", fontsize=8)
+
+    axes[-1].set_xlabel("time [s]")
+    fig.tight_layout()
+    fig.savefig(out_png, dpi=160)
+    plt.close(fig)
+    print(f"[play] metrics plot saved: {out_png}")
+
+    # Also print a compact torque summary for quick terminal inspection.
+    print("[play] torque summary for plotted env:")
+    for j, name in enumerate(dof_names):
+        if torque_limits is not None:
+            print(f"  {j:02d} {name:>16s}: max_abs={max_abs[j]:7.2f} Nm  rms={rms[j]:7.2f} Nm  limit={torque_limits[j]:7.2f} Nm  sat={sat_ratio[j]:5.1f}%")
+        else:
+            print(f"  {j:02d} {name:>16s}: max_abs={max_abs[j]:7.2f} Nm  rms={rms[j]:7.2f} Nm")
+
+
 def play(args, play_args):
     env_cfg, train_cfg = task_registry.get_cfgs(name=args.task)
     set_eval_terrain(env_cfg, play_args)
@@ -323,11 +496,19 @@ def play(args, play_args):
     cam_handles = create_cameras(env, video_env_ids)
     print(f"[play] selected video envs: {video_env_ids}")
 
+    if int(play_args.play_metrics_env_id) >= 0:
+        metric_env_id = min(int(play_args.play_metrics_env_id), env.num_envs - 1)
+    else:
+        metric_env_id = int(video_env_ids[0]) if len(video_env_ids) > 0 else 0
+    print(f"[play] metrics env: {metric_env_id}")
+    metrics = {"t": [], "torques": [], "cmd": [], "cmd_given": [], "vel": []}
+
     video_width = PLAY_TILE_COLS * PLAY_TILE_WIDTH
     video_height = PLAY_TILE_ROWS * PLAY_TILE_HEIGHT
     out_path = play_args.play_output
     if not os.path.isabs(out_path):
         out_path = os.path.join(ROOT_DIR, "logs", train_cfg.runner.experiment_name, out_path)
+    metrics_out_path = _resolve_metrics_output(play_args, out_path)
     video = FfmpegVideoWriter(out_path, video_width, video_height, PLAY_VIDEO_FPS)
     print(f"[play] recording video: {out_path}")
 
@@ -347,6 +528,7 @@ def play(args, play_args):
                 else:
                     actions = policy.act_inference(obs)
             obs, privileged_obs, rewards, costs, dones, infos = env.step(actions)
+            collect_metrics_step(env, metric_env_id, i * env.dt, metrics)
 
             if i % record_every == 0:
                 frame = capture_mosaic_frame(env, video_env_ids, cam_handles, i, play_args)
@@ -354,6 +536,7 @@ def play(args, play_args):
     finally:
         video.close()
         print(f"[play] video saved: {out_path}")
+        save_metrics_plot(env, metrics, metric_env_id, metrics_out_path, play_args)
 
 
 if __name__ == "__main__":

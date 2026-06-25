@@ -13,6 +13,7 @@ from global_config import ROOT_DIR, ENVS_DIR
 from utils.helpers import get_args
 from envs import LeggedRobot
 from utils.task_registry import task_registry
+from tasks import register_all_tasks
 
 def train(args):
     env, env_cfg = task_registry.make_env(name=args.task, args=args)
@@ -33,10 +34,6 @@ def train(args):
 
 if __name__ == '__main__':
 
-    task_registry.register("tita_constraint", LeggedRobot, TitaConstraintRoughCfg(), TitaConstraintRoughCfgPPO())
-    task_registry.register("d1h_constraint", LeggedRobot, D1HConstraintRoughCfg(), D1HConstraintRoughCfgPPO())
-    task_registry.register("d1h_evt1_climb", Y1v0hEvt1Climb, Y1v0hEvt1ClimbCfg(), Y1v0hEvt1ClimbCfgPPO())
-    task_registry.register("d1h_base", D1hBase, D1hBaseCfg(), D1hBaseCfgPPO())
-    
+    register_all_tasks()
     args = get_args()
     train(args)

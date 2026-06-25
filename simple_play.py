@@ -1,5 +1,6 @@
 from isaacgym import gymapi
 import os
+from tasks import register_all_tasks
 
 import numpy as np
 import torch
@@ -162,6 +163,8 @@ def play(args):
 
     env_cfg.env.num_envs = min(env_cfg.env.num_envs, PLAY_NUM_ENVS)
     _disable_eval_randomization(env_cfg)
+
+    register_all_tasks()
 
     env, _ = task_registry.make_env(name=args.task, args=args, env_cfg=env_cfg)
     env.reset()

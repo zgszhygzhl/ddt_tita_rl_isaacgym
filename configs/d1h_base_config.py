@@ -54,7 +54,7 @@ class D1hBaseCfg(LeggedRobotCfg):
         num_observations = n_proprio + n_scan + history_len * n_proprio + n_priv_latent
 
     class init_state(LeggedRobotCfg.init_state):
-        pos = [0.0, 0.0, 0.5]  # x, y, z [m]
+        pos = [0.0, 0.0, 0.46]  # x, y, z [m]
         rot = [0, 0.0, 0.0, 1]  # x, y, z, w [quat]
         lin_vel = [0.0, 0.0, 0.0]
         ang_vel = [0.0, 0.0, 0.0]
@@ -91,16 +91,17 @@ class D1hBaseCfg(LeggedRobotCfg):
     class commands(LeggedRobotCfg.commands):
         # Base policy should learn normal rolling and command tracking.
         # It should not be specialized for stair crawling.
-        commands_proportion = [0.45, 0.05, 0.10, 0.15, 0.05, 0.05, 0.05, 0.05, 0.05]
+        # 1.x 2.y 3.xy_mix 4.spot_turn 5.x_rotation 6.y_rotation 7.xy_mix_rotation 8.stand_still
+        commands_proportion = [0.55, 0.05, 0.10, 0.10, 0.05, 0.05, 0.05, 0.00, 0.05]
 
         curriculum = True
         max_curriculum = 0.8
 
-        max_curriculum_x = 0.8
-        max_curriculum_y = 0.2
-        min_curriculum_x = -0.3
-        min_curriculum_y = -0.2
-        max_curriculum_z = 0.5
+        max_curriculum_x = 1.0
+        max_curriculum_y = 0.5
+        min_curriculum_x = -1.0
+        min_curriculum_y = -0.5
+        max_curriculum_z = 1.0
 
         num_commands = 4
         resampling_time = 10
@@ -120,7 +121,7 @@ class D1hBaseCfg(LeggedRobotCfg):
             lin_vel_x = [-0.3, 0.8]
             lin_vel_y = [-0.1, 0.1]
             ang_vel_yaw = [-0.5, 0.5]
-            heading = [-1.14, 1.14]
+            heading = [-3.14, 3.14]
 
     class asset(LeggedRobotCfg.asset):
         file = '{ROOT_DIR}/resources/d1h/urdf/robot.urdf'
@@ -162,9 +163,9 @@ class D1hBaseCfg(LeggedRobotCfg):
 
             # Main base-policy tracking rewards.
             tracking_lin_vel = 0.0
-            tracking_lin_vel_x = 12.0
-            tracking_lin_vel_y = 2.0
-            tracking_ang_vel = 4.0
+            tracking_lin_vel_x = 15.0
+            tracking_lin_vel_y = 5.0
+            tracking_ang_vel = 5.0
 
             # Stability and smoothness.
             lin_vel_z = -2.0
@@ -174,7 +175,7 @@ class D1hBaseCfg(LeggedRobotCfg):
 
             dof_vel = 0.0
             dof_acc = -2.5e-7
-            action_rate = -0.08
+            action_rate = -0.1
             action_smoothness = 0.0
 
             collision = -10.0
@@ -185,7 +186,7 @@ class D1hBaseCfg(LeggedRobotCfg):
             stumble = 0.0
 
             # Base task is not trained on stairs, so these stair-jump suppressors stay off.
-            no_gait = 1.0
+            no_gait = 5.0
             both_feet_air = 0.0
             upward_vel_spike = 0.0
             contact_upward_bounce = 0.0
@@ -198,8 +199,8 @@ class D1hBaseCfg(LeggedRobotCfg):
             body_symmetry_z = 0.3
 
             heading = 5.0
-            upward = 0.0
-            head_los_distance = 0.0
+            upward = 1.0
+            head_los_distance = -20.0
 
     class domain_rand(LeggedRobotCfg.domain_rand):
         # Mild randomization for base. Strong disturbances are left for recovery expert.
@@ -286,7 +287,7 @@ class D1hBaseCfg(LeggedRobotCfg):
         # Terrain types in utils/terrain.py:
         # [smooth slope, rough slope, stairs down, stairs up, discrete, stepping stones, gap, pit, ...]
         # Base should not learn stair climbing. Keep stairs/discrete/gap/pit at 0.
-        terrain_proportions = [0.6, 0.4, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        terrain_proportions = [0.8, 0.2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
         slope = [0.0, 0.05]
         step_height = [0.02, 0.04]  # unused for base because stair proportions are zero
@@ -295,7 +296,7 @@ class D1hBaseCfg(LeggedRobotCfg):
         pit_depth = [0.0, 0.2]
 
         slope_treshold = 0.75
-        max_init_terrain_level = 2
+        max_init_terrain_level = 4
 
 
 class D1hBaseCfgPPO(LeggedRobotCfgPPO):

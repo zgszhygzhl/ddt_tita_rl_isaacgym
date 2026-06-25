@@ -3,7 +3,7 @@ cd /root/gpufree-data/ddt_tita_rl_isaacgym
 
 训练
 python train.py \
-  --task=d1h_evt1_climb \
+  --task=d1h_base \
   --headless \
   --num_envs 4096 \
   --max_iterations 20000 \
