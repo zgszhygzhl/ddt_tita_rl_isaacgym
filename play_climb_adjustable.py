@@ -14,7 +14,7 @@ python play_climb_adjustable.py \
   --play_num_envs 16 \
   --play_duration 20
 """
-
+from isaacgym import gymapi
 import argparse
 import os
 import sys
@@ -24,7 +24,7 @@ import torch
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from isaacgym import gymapi
+
 from PIL import Image, ImageDraw, ImageFont
 
 from envs import LeggedRobot

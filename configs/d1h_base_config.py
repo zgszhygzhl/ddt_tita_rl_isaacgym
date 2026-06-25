@@ -118,7 +118,7 @@ class D1hBaseCfg(LeggedRobotCfg):
         buffer_smoothing_factor = 0.1
 
         class ranges:
-            lin_vel_x = [-0.3, 0.8]
+            lin_vel_x = [-0.3, 0.3]
             lin_vel_y = [-0.1, 0.1]
             ang_vel_yaw = [-0.5, 0.5]
             heading = [-3.14, 3.14]
@@ -138,7 +138,7 @@ class D1hBaseCfg(LeggedRobotCfg):
 
     class rewards(LeggedRobotCfg.rewards):
         soft_dof_pos_limit = 0.9
-        base_height_target = 0.5
+        base_height_target = 0.45
 
         # Keep these attributes for compatibility with reward functions,
         # but base task does not use the stair-specific terms.
@@ -163,15 +163,15 @@ class D1hBaseCfg(LeggedRobotCfg):
 
             # Main base-policy tracking rewards.
             tracking_lin_vel = 0.0
-            tracking_lin_vel_x = 15.0
-            tracking_lin_vel_y = 5.0
-            tracking_ang_vel = 5.0
+            tracking_lin_vel_x = 12.0
+            tracking_lin_vel_y = 3.0
+            tracking_ang_vel = 3.0
 
             # Stability and smoothness.
             lin_vel_z = -2.0
             ang_vel_xy = -0.08
             orientation = -10.0
-            base_height = -15.0
+            base_height = -10.0
 
             dof_vel = 0.0
             dof_acc = -2.5e-7

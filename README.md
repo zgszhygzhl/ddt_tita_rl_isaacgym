@@ -23,7 +23,7 @@ python play_climb_adjustable.py \
   --headless \
   --load_run Jun25_01-27-27_d1h_evt1_climb \
   --checkpoint 8000 \
-  --play_vx 1.0 \
+  --play_vx 0.5 \
   --play_vy 0.0 \
   --play_yaw 0.0 \
   --play_terrain stairs_down \
@@ -32,13 +32,13 @@ python play_climb_adjustable.py \
   --play_num_envs 16 \
   --play_video_num_envs 4 \
   --play_duration 20 \
-  --play_output play8000_15cm_v100.mp4
+  --play_output play8000_15cm_v50.mp4
 
 
 
 看板
 tensorboard \
-  --logdir logs/d1h_evt1_climb \
+  --logdir logs\
   --host 0.0.0.0 \
   --port 6012
 
