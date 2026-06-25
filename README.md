@@ -11,6 +11,22 @@ python train.py \
   --load_run Jun24_00-31-58_d1h_evt1_climb \
   --checkpoint 4000
 
+训练专家
+python scripts/train_residual.py \
+  --task=d1h_disc_residual \
+  --base_task=d1h_base \
+  --base_ckpt logs/d1h_base/你的base_run/checkpoints/model_8000.pt \
+  --headless \
+  --num_envs 4096 \
+  --max_iterations 8000 \
+  --residual_alpha 0.65 \
+  --residual_delta_clip 0 \
+  --residual_alpha_warmup_steps 200 \
+  --residual_alpha_warmup_min 0.25 \
+  --residual_std_min 0.20 \
+  --residual_std_max 0.65 \
+  --run_name disc_residual_k065
+
 推理 录制
 python simple_play.py \
   --task=d1h_evt1_climb \

@@ -32,6 +32,11 @@ class NP3O:
                  device='cpu',
                  dagger_update_freq=20,
                  priv_reg_coef_schedual = [0, 0, 0],
+                 # residual_l2_coef:
+                 #   residual 动作修正量的 L2 正则系数。
+                 #   默认 0.0，不影响普通 base 训练。
+                 #   仅当 actor_critic 有 current_delta 且该系数大于 0 时生效。
+                 #   用于鼓励 residual 修正尽量小，避免 expert 完全覆盖 base。
                  residual_l2_coef=0.0,
                  **kwargs
                  ):
@@ -47,6 +52,9 @@ class NP3O:
         self.actor_critic.to(self.device)
         self.storage = None # initialized later
         self.residual_l2_coef = residual_l2_coef
+        # residual 训练时 base 参数会被 requires_grad=False 冻结。
+        # 这里只把可训练参数交给 optimizer，避免 frozen base 进入优化器。
+        # 普通 base 训练时所有参数都是可训练的，因此不影响原训练路径。
         self.trainable_params = [p for p in self.actor_critic.parameters() if p.requires_grad]
         if len(self.trainable_params) == 0:
             raise RuntimeError("No trainable parameters found for NP3O optimizer.")
@@ -246,6 +254,10 @@ class NP3O:
                 main_loss = surrogate_loss + self.cost_viol_loss_coef * viol_loss 
                 combine_value_loss = self.cost_value_loss_coef * cost_value_loss + self.value_loss_coef * value_loss
                 entropy_loss = - self.entropy_coef * entropy_batch.mean()
+                # 如果当前 actor 是 ResidualExpertActorCritic，它会提供 current_delta。
+                # current_delta = 实际加到 base action 上的 residual 修正量。
+                # 对 current_delta 做 L2 惩罚，可以抑制过大的 residual 动作，降低跳跃/弹跳倾向。
+                # 普通单策略 actor 没有 current_delta，且 residual_l2_coef 默认 0，因此不会受影响。
                 residual_l2_loss = 0.0
                 if self.residual_l2_coef > 0.0 and hasattr(self.actor_critic, "current_delta"):
                     residual_l2_loss = self.residual_l2_coef * torch.mean(

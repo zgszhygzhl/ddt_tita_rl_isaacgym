@@ -36,6 +36,33 @@ def get_residual_args():
         {"name": "--seed", "type": int, "help": "Override random seed."},
         {"name": "--max_iterations", "type": int, "help": "Override max learning iterations."},
         {"name": "--base_ckpt", "type": str, "default": None, "help": "Checkpoint path for the frozen base policy."},
+        # residual_alpha:
+        #   residual expert 输出动作修正量的最终缩放系数。
+        #   最终动作近似为：a_final = a_base + residual_alpha * a_residual。
+        #   数值越大，expert 对动作影响越强；数值越小，base 越占主导。
+        #   disc 第一版建议 0.35~0.50，避免 residual 直接覆盖 base。
+        # residual_alpha_warmup_steps:
+        #   residual_alpha 从较小值逐渐升到目标值所用的训练迭代数。
+        #   作用是避免训练初期 residual 随机输出过大，破坏 frozen base 的稳定动作。
+        # residual_alpha_warmup_min:
+        #   warmup 初期 alpha 的比例。
+        #   例如 residual_alpha=0.45, warmup_min=0.15，则初始 alpha≈0.0675。
+        #   后续随训练迭代逐渐升到 0.45。
+        # residual_delta_clip:
+        #   对已经乘过 alpha 的 residual 修正量 delta 做逐维硬截断。
+        #   即 delta = clamp(alpha * residual_mean, -clip, +clip)。
+        #   作用是防止 expert 输出过大修正，直接覆盖 base 动作。
+        # residual_std_scale:
+        #   residual actor 探索噪声 std 的缩放系数。
+        #   默认为 1.0。减小它可以降低探索动作的抖动和激进程度。
+        # residual_std_min / residual_std_max:
+        #   最终动作分布 std 的下限和上限。
+        #   std 太小探索不足，std 太大容易动作抖动、弹跳或摔倒。
+        #   disc residual 第一版建议 min=0.20, max=0.65。
+        # reset_residual_std:
+        #   resume residual 训练时强行重置 residual actor 的 std。
+        #   用于 std 已经过大或过小时重新控制探索强度。
+        #   fresh training 一般不用。
         {"name": "--residual_alpha", "type": float, "default": 0.60, "help": "Final scale factor for the residual expert mean."},
         {"name": "--residual_alpha_warmup_steps", "type": int, "default": 3000, "help": "Iterations used to ramp residual alpha to its final value."},
         {"name": "--residual_alpha_warmup_min", "type": float, "default": 0.25, "help": "Initial alpha fraction during warmup."},

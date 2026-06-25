@@ -20,6 +20,16 @@ except ModuleNotFoundError:
     D1hBaseCfg = None
     D1hBaseCfgPPO = None
 
+try:
+    from configs.d1h_disc_residual_config import (
+        D1hDiscResidual,
+        D1hDiscResidualCfg,
+        D1hDiscResidualCfgPPO,
+    )
+except ModuleNotFoundError:
+    D1hDiscResidual = None
+    D1hDiscResidualCfg = None
+    D1hDiscResidualCfgPPO = None
 
 def register_all_tasks():
     """Register every available task exactly once for the current process."""
@@ -51,4 +61,12 @@ def register_all_tasks():
             D1hBase,
             D1hBaseCfg(),
             D1hBaseCfgPPO(),
+        )
+
+    if D1hDiscResidual is not None:
+        task_registry.register(
+            "d1h_disc_residual",
+            D1hDiscResidual,
+            D1hDiscResidualCfg(),
+            D1hDiscResidualCfgPPO(),
         )

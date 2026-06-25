@@ -41,6 +41,8 @@ class ResidualExpertActorCritic(nn.Module):
         self.last_residual_mean = None
         self.last_final_mean = None
 
+        # freeze_base=True 时，base policy 只作为冻结的默认控制器使用。
+        # 训练 residual expert 时不更新 base 参数，避免把已经训练好的平地/基础能力破坏掉。
         if self.freeze_base:
             self.base_actor_critic.eval()
             for parameter in self.base_actor_critic.parameters():
@@ -106,6 +108,9 @@ class ResidualExpertActorCritic(nn.Module):
         self.base_actor_critic.reset(dones)
         self.residual_actor_critic.reset(dones)
 
+    # 重写 train() 是为了防止外部 runner 调用 actor_critic.train() 后，
+    # 把 frozen base 也切回 train mode。
+    # residual actor 保持 train，base actor 始终保持 eval。
     def train(self, mode=True):
         super().train(mode)
         self.residual_actor_critic.train(mode)
@@ -118,9 +123,14 @@ class ResidualExpertActorCritic(nn.Module):
         return self
 
     def update_distribution(self, obs):
+        # 只对 base_mean 使用 no_grad，因为 base 是冻结控制器；
+        # residual_mean 不能放进 no_grad，否则 residual expert 没有梯度，无法训练。
         with torch.no_grad():
             base_mean = self.base_actor_critic.act_inference(obs)
         residual_mean = self.residual_actor_critic.act_inference(obs)
+        # delta 是真正加到 base action 上的 residual 修正量。
+        # current_alpha 支持 warmup，训练初期较小，后期逐渐升到 target_alpha。
+        # residual_delta_clip 对 delta 做硬限制，避免 residual 直接覆盖 base。
         delta = self.current_alpha * residual_mean
         if self.residual_delta_clip is not None and self.residual_delta_clip > 0:
             delta = torch.clamp(delta, -self.residual_delta_clip, self.residual_delta_clip)
@@ -144,6 +154,8 @@ class ResidualExpertActorCritic(nn.Module):
         self.last_current_alpha = torch.as_tensor(self.current_alpha, device=obs.device)
 
         # Keep this attached so NP3O can apply residual L2 regularization.
+        # current_delta 保持梯度，用于 NP3O 中的 residual_l2_coef 正则。
+        # 不要 detach，否则 residual L2 不能反向约束 expert。
         self.current_delta = delta
 
     def clamp_action_std(self, min_std=0.02, max_std=1.2):
