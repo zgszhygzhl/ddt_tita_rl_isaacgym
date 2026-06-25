@@ -21,18 +21,18 @@ python simple_play.py \
 python play_climb_adjustable.py \
   --task=d1h_evt1_climb \
   --headless \
-  --load_run Jun24_12-47-41_d1h_evt1_climb \
-  --checkpoint 7400 \
-  --play_vx 0.55 \
+  --load_run Jun25_01-27-27_d1h_evt1_climb \
+  --checkpoint 8000 \
+  --play_vx 1.0 \
   --play_vy 0.0 \
   --play_yaw 0.0 \
   --play_terrain stairs_down \
-  --play_stair_height 0.10 \
+  --play_stair_height 0.15 \
   --play_step_width 0.55 \
   --play_num_envs 16 \
   --play_video_num_envs 4 \
   --play_duration 20 \
-  --play_output play7400_14cm_v055.mp4
+  --play_output play8000_15cm_v100.mp4
 
 
 
@@ -40,12 +40,12 @@ python play_climb_adjustable.py \
 tensorboard \
   --logdir logs/d1h_evt1_climb \
   --host 0.0.0.0 \
-  --port 6011
+  --port 6012
 
 tmux
-tmux new -s d1h_train
+tmux new -s d1h_moe_train
 tmux ls
-tmux attach -t d1h_train
+tmux attach -t d1h_moe_train
 
 
 

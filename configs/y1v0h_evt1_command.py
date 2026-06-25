@@ -550,6 +550,50 @@ class Y1v0hEvt1Command(LeggedRobot):
 
         return penalty
 
+
+    def _reward_upward_vel_spike(self):
+        """
+        Penalize explosive upward base velocity.
+
+        This directly suppresses jumping / bouncing onto stairs.
+        It does not care whether both feet are airborne or still in contact.
+        """
+
+        deadband = getattr(self.cfg.rewards, "upward_vel_spike_deadband", 0.20)
+        max_excess = getattr(self.cfg.rewards, "upward_vel_spike_max_excess", 1.0)
+
+        upward_excess = torch.clamp(
+            self.base_lin_vel[:, 2] - deadband,
+            min=0.0,
+            max=max_excess,
+        )
+
+        return upward_excess
+
+
+    def _reward_contact_upward_bounce(self):
+        """
+        Penalize upward bouncing while both wheel-feet are still in contact.
+
+        This targets the failure mode where the robot does not fully leave the ground,
+        but both legs push against the stair/ground and launch the base upward.
+        """
+
+        contact_force = getattr(self.cfg.rewards, "contact_upward_bounce_force", 5.0)
+        deadband = getattr(self.cfg.rewards, "contact_upward_bounce_deadband", 0.12)
+        max_excess = getattr(self.cfg.rewards, "contact_upward_bounce_max_excess", 1.0)
+
+        contacts = self.contact_forces[:, self.feet_indices, 2] > contact_force
+        both_contact = torch.sum(contacts.float(), dim=1) >= 2.0
+
+        upward_excess = torch.clamp(
+            self.base_lin_vel[:, 2] - deadband,
+            min=0.0,
+            max=max_excess,
+        )
+
+        return upward_excess * both_contact.float()
+
     
 def random_quat(U):
     u1 = U[:,0].unsqueeze(1)

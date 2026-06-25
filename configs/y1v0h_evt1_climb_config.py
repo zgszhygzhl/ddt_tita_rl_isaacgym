@@ -150,6 +150,14 @@ class Y1v0hEvt1ClimbCfg( LeggedRobotCfg ):
         both_feet_air_contact_force = 5.0
         both_feet_air_grace_time = 0.02
         both_feet_air_ramp_time = 0.03
+        # 抑制弹跳上台阶
+        upward_vel_spike_deadband = 0.15
+        upward_vel_spike_max_excess = 1.0
+
+        contact_upward_bounce_force = 5.0
+        contact_upward_bounce_deadband = 0.12
+        contact_upward_bounce_max_excess = 1.0
+
         class scales( LeggedRobotCfg.rewards.scales ):
 
             torques = 0.0
@@ -173,18 +181,18 @@ class Y1v0hEvt1ClimbCfg( LeggedRobotCfg ):
             foot_clearance= -0.0
             orientation=-10.0
             no_gait = 1.0
-            both_feet_air = -80.0
+            both_feet_air = -0.0
+            upward_vel_spike = -25.0
+            contact_upward_bounce = -20.0
             
             # 爬楼约束：鼓励身体保持在双足之间。
             body_pos_to_feet_x = 1.0
             # body_vel_to_feet_x = 10.0
-            body_feet_distance_x = -50.0
+            body_feet_distance_x = -20.0
             body_feet_distance_y = -100.0
-            body_symmetry_y = 0.1
-            body_symmetry_z = 0.3
             # body_symmetry = 10
             body_symmetry_y = 0.3
-            body_symmetry_z = 0.9
+            body_symmetry_z = 0.05
             heading = 10.0
             upward = 1.0
             head_los_distance = -20.0
