@@ -115,8 +115,8 @@ class Y1v0hEvt1Command(LeggedRobot):
         max_change_per_step = max_change_rates * self.dt
         
         # 计算命令差值
-        command_diff = self.commands[:, :3] - self.odemetry_vel[:, :3]
-        
+        command_diff = self.commands[:, :3] - self.commands_given[:, :3]    
+
         # 根据命令和实际速度的大小关系动态调整x方向的最大变化率
         # max_change_rates[0] = torch.where(
         #     abs(self.commands[:, 0]) > abs(self.odemetry_vel[:, 0]),

@@ -32,6 +32,7 @@ class NP3O:
                  device='cpu',
                  dagger_update_freq=20,
                  priv_reg_coef_schedual = [0, 0, 0],
+                 residual_l2_coef=0.0,
                  **kwargs
                  ):
 
@@ -45,7 +46,11 @@ class NP3O:
         self.actor_critic = actor_critic
         self.actor_critic.to(self.device)
         self.storage = None # initialized later
-        self.optimizer = optim.Adam(self.actor_critic.parameters(), lr=learning_rate)
+        self.residual_l2_coef = residual_l2_coef
+        self.trainable_params = [p for p in self.actor_critic.parameters() if p.requires_grad]
+        if len(self.trainable_params) == 0:
+            raise RuntimeError("No trainable parameters found for NP3O optimizer.")
+        self.optimizer = optim.Adam(self.trainable_params, lr=learning_rate)
 
         if hasattr(self.actor_critic, 'imitation_learning_loss') and self.actor_critic.imi_flag:
             self.imi_flag = True
@@ -241,17 +246,22 @@ class NP3O:
                 main_loss = surrogate_loss + self.cost_viol_loss_coef * viol_loss 
                 combine_value_loss = self.cost_value_loss_coef * cost_value_loss + self.value_loss_coef * value_loss
                 entropy_loss = - self.entropy_coef * entropy_batch.mean()
+                residual_l2_loss = 0.0
+                if self.residual_l2_coef > 0.0 and hasattr(self.actor_critic, "current_delta"):
+                    residual_l2_loss = self.residual_l2_coef * torch.mean(
+                        torch.sum(torch.square(self.actor_critic.current_delta), dim=-1)
+                    )
 
                 if self.imi_flag:
                     imitation_loss = self.actor_critic.imitation_learning_loss(obs_batch)
-                    loss = main_loss + combine_value_loss + entropy_loss + self.imi_weight*imitation_loss
+                    loss = main_loss + combine_value_loss + entropy_loss + self.imi_weight*imitation_loss + residual_l2_loss
                 else:
-                    loss = main_loss + combine_value_loss + entropy_loss
+                    loss = main_loss + combine_value_loss + entropy_loss + residual_l2_loss
 
                 # Gradient step
                 self.optimizer.zero_grad()
                 loss.backward()
-                nn.utils.clip_grad_norm_(self.actor_critic.parameters(), self.max_grad_norm)
+                nn.utils.clip_grad_norm_(self.trainable_params, self.max_grad_norm)
                 self.optimizer.step()
 
                 mean_value_loss += value_loss.item()

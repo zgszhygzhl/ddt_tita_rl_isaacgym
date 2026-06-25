@@ -761,6 +761,20 @@ class ActorCriticBarlowTwins(nn.Module):
     def get_actions_log_prob(self, actions):
         return self.distribution.log_prob(actions).sum(dim=-1)
     
+    def act_inference(self, obs):
+        if hasattr(self, "act_teacher"):
+            return self.act_teacher(obs)
+        elif hasattr(self, "act_student"):
+            return self.act_student(obs)
+        else:
+            self.update_distribution(obs)
+            return self.action_mean
+
+    def clamp_action_std(self, min_std=0.02, max_std=1.2):
+        if hasattr(self, "std"):
+            with torch.no_grad():
+                self.std.data.clamp_(min_std, max_std)
+
     def act_teacher(self,obs, **kwargs):
         obs_prop = obs[:, :self.num_prop]
         obs_hist = obs[:, -self.num_hist*self.num_prop:].view(-1, self.num_hist, self.num_prop)
