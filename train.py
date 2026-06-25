@@ -5,6 +5,7 @@ from datetime import datetime
 from configs.tita_constraint_config import TitaConstraintRoughCfg, TitaConstraintRoughCfgPPO
 from configs.d1h_constraint_config import D1HConstraintRoughCfg, D1HConstraintRoughCfgPPO
 from configs.y1v0h_evt1_climb_config import Y1v0hEvt1Climb, Y1v0hEvt1ClimbCfg, Y1v0hEvt1ClimbCfgPPO
+from configs.d1h_base_config import D1hBase, D1hBaseCfg, D1hBaseCfgPPO
 from envs.no_constrains_legged_robot import Tita
 
 from global_config import ROOT_DIR, ENVS_DIR
@@ -35,6 +36,7 @@ if __name__ == '__main__':
     task_registry.register("tita_constraint", LeggedRobot, TitaConstraintRoughCfg(), TitaConstraintRoughCfgPPO())
     task_registry.register("d1h_constraint", LeggedRobot, D1HConstraintRoughCfg(), D1HConstraintRoughCfgPPO())
     task_registry.register("d1h_evt1_climb", Y1v0hEvt1Climb, Y1v0hEvt1ClimbCfg(), Y1v0hEvt1ClimbCfgPPO())
-
+    task_registry.register("d1h_base", D1hBase, D1hBaseCfg(), D1hBaseCfgPPO())
+    
     args = get_args()
     train(args)

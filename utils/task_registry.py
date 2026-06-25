@@ -107,7 +107,7 @@ class TaskRegistry():
         # 2. 保存本次任务真正相关的源码快照
         save_items = [
             os.path.join(ROOT_DIR, "train.py"),
-            os.path.join(ROOT_DIR, "configs", "y1v0h_evt1_climb_config.py"),
+            os.path.join(ROOT_DIR, "configs",  f"{name}_config.py"),
             os.path.join(ROOT_DIR, "configs", "y1v0h_evt1_command.py"),
             os.path.join(ROOT_DIR, "configs", "legged_robot_config.py"),
             os.path.join(ENVS_DIR, "legged_robot.py"),
