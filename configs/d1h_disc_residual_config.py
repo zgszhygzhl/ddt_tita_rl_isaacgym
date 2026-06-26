@@ -30,9 +30,9 @@ class D1hDiscResidualCfg(Y1v0hEvt1ClimbCfg):
         curriculum = True
         max_curriculum = 0.8
 
-        max_curriculum_x = 0.8
+        max_curriculum_x = 1.0
         max_curriculum_y = 0.15
-        min_curriculum_x = -0.4
+        min_curriculum_x = -0.3
         min_curriculum_y = -0.15
         max_curriculum_z = 0.25
 
@@ -47,7 +47,7 @@ class D1hDiscResidualCfg(Y1v0hEvt1ClimbCfg):
         class ranges(Y1v0hEvt1ClimbCfg.commands.ranges):
             # 先聚焦 0.2~0.55 m/s 上台阶。
             # 后面如果稳定，再把上限推到 0.7 或 1.0。
-            lin_vel_x = [0.20, 0.55]
+            lin_vel_x = [0.25, 0.55]
             lin_vel_y = [-0.08, 0.08]
             ang_vel_yaw = [-0.10, 0.10]
             heading = [-0.5, 0.5]
@@ -75,20 +75,20 @@ class D1hDiscResidualCfg(Y1v0hEvt1ClimbCfg):
 
             # 保持前向速度跟踪，但不要为了速度牺牲姿态。
             tracking_lin_vel = 0.0
-            tracking_lin_vel_x = 12.0
-            tracking_lin_vel_y = 2.0
-            tracking_ang_vel = 2.0
+            tracking_lin_vel_x = 15.0
+            tracking_lin_vel_y = 3.0
+            tracking_ang_vel = 5.0
 
             # 垂向速度和姿态稳定更重要。
             lin_vel_z = -3.0
             ang_vel_xy = -0.08
             orientation = -12.0
-            base_height = -28.0
+            base_height = -20.0
 
             # 动作平滑略加重，避免 residual 大幅抖动。
             powers = -2e-5
             dof_acc = -3.0e-7
-            action_rate = -0.15
+            action_rate = -0.12
             action_smoothness = 0.0
 
             collision = -10.0
@@ -100,14 +100,14 @@ class D1hDiscResidualCfg(Y1v0hEvt1ClimbCfg):
             stumble = 0.0
 
             # 不要把 no_gait 加太大，否则会鼓励双脚一直接触，反而不利于形成类步态。
-            no_gait = 0.5
+            no_gait = 1.5
 
             # 关键：打开双脚同时离地惩罚，抑制纯跳。
-            both_feet_air = -15.0
+            both_feet_air = -5.0
 
             # 关键：加重向上弹跳惩罚。
-            upward_vel_spike = -35.0
-            contact_upward_bounce = -30.0
+            upward_vel_spike = -15.0
+            contact_upward_bounce = -10.0
 
             # 支撑几何约束，防止一条腿伸太远或身体跑出支撑线。
             body_pos_to_feet_x = 1.0
@@ -118,7 +118,7 @@ class D1hDiscResidualCfg(Y1v0hEvt1ClimbCfg):
             body_symmetry_y = 0.2
             body_symmetry_z = 0.03
 
-            heading = 6.0
+            heading = 10.0
             upward = 1.0
             head_los_distance = -25.0
 
@@ -131,10 +131,10 @@ class D1hDiscResidualCfg(Y1v0hEvt1ClimbCfg):
         restitution_range = [0.0, 0.3]
 
         randomize_base_mass = True
-        added_mass_range = [-0.5, 1.0]
+        added_mass_range = [-1.0, 3.0]
 
         randomize_base_com = True
-        added_com_range = [-0.03, 0.03]
+        added_com_range = [-0.1, 0.1]
 
         push_robots = True
         push_interval_s = 15
@@ -161,14 +161,14 @@ class D1hDiscResidualCfg(Y1v0hEvt1ClimbCfg):
         # utils/terrain.py 中实际顺序：
         # [slope, rough_slope, stairs_down branch, stairs_up branch, discrete, stones, gap, pit, ...]
         # 这里主要训练 stairs_up residual。
-        terrain_proportions = [0.05, 0.0, 0.85, 0.10, 0.0, 0.0, 0.0, 0.0, 0.0]
+        terrain_proportions = [0.1, 0.0, 0.8, 0.1, 0.0, 0.0, 0.0, 0.0, 0.0]
 
         slope = [0.0, 0.02]
 
         # 第一版目标到 15 cm，略低于原 climb 的 16 cm，降低 residual 学习难度。
         # 稳定后可以改到 [0.02, 0.16] 或 [0.03, 0.17]。
-        step_height = [0.02, 0.15]
-        step_width_range = [0.52, 0.62]
+        step_height = [0.02, 0.16]
+        step_width_range = [0.51, 0.61]
 
         discrete_obstacles_height = [0.05, 0.15]
         pit_depth = [0.0, 0.3]
@@ -179,8 +179,8 @@ class D1hDiscResidualCfg(Y1v0hEvt1ClimbCfg):
 
 class D1hDiscResidualCfgPPO(Y1v0hEvt1ClimbCfgPPO):
     class algorithm(Y1v0hEvt1ClimbCfgPPO.algorithm):
-        entropy_coef = 0.006
-        learning_rate = 8.0e-4
+        entropy_coef = 0.01
+        learning_rate = 1.0e-3
         max_grad_norm = 0.01
         num_learning_epochs = 5
         num_mini_batches = 4
@@ -190,17 +190,23 @@ class D1hDiscResidualCfgPPO(Y1v0hEvt1ClimbCfgPPO):
         # residual 修正量 L2 正则。
         # 作用：鼓励 expert 少改 base，只在台阶/冲击等必要时修正动作。
         # 过大可能导致上不去；过小则 expert 可能重新变成大幅跳跃策略。
-        residual_l2_coef = 0.005
+        residual_l2_coef = 0.001
 
     class policy(Y1v0hEvt1ClimbCfgPPO.policy):
         # residual expert 不需要原 climb 的大网络。
-        init_noise_std = 0.6
+        init_noise_std = 1.0
         continue_from_last_std = True
 
         scan_encoder_dims = [64, 32]
         actor_hidden_dims = [256, 128, 64]
         critic_hidden_dims = [256, 128, 64]
         priv_encoder_dims = []
+
+        barlow_actor_hidden_dims = [256, 128, 64]
+        barlow_mlp_encoder_dims = [256, 128, 64]
+        barlow_latent_dim = 16
+        barlow_obs_encoder_dims = [128, 64]
+        barlow_num_hist = 10
 
         activation = 'elu'
 
@@ -213,9 +219,11 @@ class D1hDiscResidualCfgPPO(Y1v0hEvt1ClimbCfgPPO):
 
         teacher_act = True
 
-        # residual wrapper 里已经关闭 imitation。
-        # 这里也关掉，避免专家训练混入 Barlow imitation loss。
-        imi_flag = False
+
+        # 打开 BarlowTwins 历史表征辅助损失。
+        # 这不是让 actor 直接看 privileged 信息，
+        # 而是用 privileged 信息监督历史编码器学习 proxy latent。
+        imi_flag = True
 
     class runner(Y1v0hEvt1ClimbCfgPPO.runner):
         run_name = 'd1h_disc_residual'

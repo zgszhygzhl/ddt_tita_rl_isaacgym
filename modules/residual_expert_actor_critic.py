@@ -33,8 +33,7 @@ class ResidualExpertActorCritic(nn.Module):
         self.residual_delta_clip = residual_delta_clip
         self.alpha_warmup_steps = max(0, int(alpha_warmup_steps))
         self.alpha_warmup_min = max(0.0, min(float(alpha_warmup_min), 1.0))
-        # self.imi_flag = getattr(self.residual_actor_critic, "imi_flag", False)
-        self.imi_flag = False
+        self.imi_flag = getattr(self.residual_actor_critic, "imi_flag", False)
         self.distribution = None
 
         self.last_base_mean = None
@@ -167,6 +166,11 @@ class ResidualExpertActorCritic(nn.Module):
             with torch.no_grad():
                 clamped_value = max(self.min_policy_std, min(value, self.max_policy_std))
                 self.residual_actor_critic.std.data.fill_(clamped_value)
+
+    def imitation_learning_loss(self, obs):
+        if hasattr(self.residual_actor_critic, "imitation_learning_loss"):
+            return self.residual_actor_critic.imitation_learning_loss(obs)
+        return obs.new_tensor(0.0)
 
     def act(self, obs, **kwargs):
         self.update_distribution(obs)

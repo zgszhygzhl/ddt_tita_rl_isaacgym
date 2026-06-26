@@ -1,4 +1,4 @@
-```python
+
 """Adjustable inference / video recording for base + residual expert policy.
 
 Example:
@@ -28,7 +28,8 @@ python scripts/play_residual_adjustable.py \
   --play_stair_height 0.15 \
   --play_vx 0.35
 """
-
+from isaacgym import gymapi, gymutil
+import isaacgym  # noqa: F401
 import importlib
 import os
 import sys
@@ -40,8 +41,7 @@ sys.path.append(ROOT)
 
 import numpy as np
 import torch
-from isaacgym import gymapi, gymutil
-import isaacgym  # noqa: F401
+
 
 from global_config import ROOT_DIR
 from modules.model_loader import load_actor_critic_checkpoint
@@ -70,6 +70,8 @@ from play_climb_adjustable import (  # noqa: E402
 
 def get_residual_play_args():
     custom_parameters = [
+        {"name": "--headless", "action": "store_true", "default": False,
+         "help": "Run without viewer window."},
         # residual task / checkpoint
         {"name": "--task", "type": str, "default": "d1h_disc_residual",
          "help": "Residual task name, e.g. d1h_disc_residual."},
@@ -320,6 +322,10 @@ def play(args):
     # 复用 play_climb_adjustable.py 的可调地形逻辑
     set_eval_terrain(env_cfg, args)
 
+    # 推理环境数量由 --play_num_envs 控制
+    args.num_envs = int(args.play_num_envs)
+    env_cfg.env.num_envs = int(args.play_num_envs)
+
     env, _ = task_registry.make_env(name=args.task, args=args, env_cfg=env_cfg)
     env.reset()
     obs = env.get_observations()
@@ -389,4 +395,4 @@ if __name__ == "__main__":
     register_all_tasks()
     args = get_residual_play_args()
     play(args)
-```
+

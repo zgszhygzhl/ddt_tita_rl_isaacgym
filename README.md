@@ -1,3 +1,4 @@
+conda deactivated
 conda activate ddtgym
 cd /root/gpufree-data/ddt_tita_rl_isaacgym
 
@@ -15,7 +16,7 @@ python train.py \
 python scripts/train_residual.py \
   --task=d1h_disc_residual \
   --base_task=d1h_base \
-  --base_ckpt logs/d1h_base/你的base_run/checkpoints/model_8000.pt \
+  --base_ckpt logs/d1h_base/Jun25_17-24-39_d1h_base/checkpoints/model_2000.pt \
   --headless \
   --num_envs 4096 \
   --max_iterations 8000 \
@@ -23,8 +24,8 @@ python scripts/train_residual.py \
   --residual_delta_clip 0 \
   --residual_alpha_warmup_steps 200 \
   --residual_alpha_warmup_min 0.25 \
-  --residual_std_min 0.20 \
-  --residual_std_max 0.65 \
+  --residual_std_min 0.4 \
+  --residual_std_max 1.0 \
   --run_name disc_residual_k065
 
 推理 录制
@@ -50,6 +51,35 @@ python play_climb_adjustable.py \
   --play_duration 20 \
   --play_output play8000_15cm_v50.mp4
 
+推理平地
+python play_climb_adjustable.py \
+  --task=d1h_base \
+  --headless \
+  --load_run Jun25_17-24-39_d1h_base \
+  --checkpoint 2000 \
+  --play_vx 0.5 \
+  --play_vy 0.0 \
+  --play_yaw 0.0 \
+  --play_terrain slope \
+  --play_slope 0.0 \
+  --play_num_envs 16 \
+  --play_video_num_envs 4 \
+  --play_duration 20 \
+  --play_output d1h_base_flat_v05.mp4
+
+推理专家
+python scripts/play_residual_adjustable.py \
+  --task=d1h_disc_residual \
+  --base_task=d1h_base \
+  --base_ckpt logs/d1h_base/Jun25_17-24-39_d1h_base/checkpoints/model_2000.pt \
+  --load_run Jun26_12-08-07_disc_residual_k065 \
+  --checkpoint 800 \
+  --headless \
+  --play_terrain stairs_down \
+  --play_stair_height 0.07 \
+  --play_vx 0.55 \
+  --play_duration 15 \
+  --play_output disc_residual_play_h007_v055_800.mp4
 
 
 看板

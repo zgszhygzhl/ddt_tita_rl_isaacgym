@@ -500,7 +500,7 @@ class Y1v0hEvt1Command(LeggedRobot):
         # Penalize base height away from target
         base_height = torch.mean(self.root_states[:, 2].unsqueeze(1) - self.measured_heights, dim=1)
         # print("base_height",base_height)
-        return torch.square((base_height - self.cfg.rewards.base_height_target)/0.1)
+        return torch.square(base_height - self.cfg.rewards.base_height_target)
 
     def _reward_both_feet_air(self):
         """

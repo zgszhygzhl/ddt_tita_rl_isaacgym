@@ -30,6 +30,7 @@ from PIL import Image, ImageDraw, ImageFont
 from envs import LeggedRobot
 from modules import *  # noqa: F401,F403
 from utils import get_args, get_load_path, task_registry
+from tasks import register_all_tasks
 from utils.helpers import class_to_dict
 from utils.video_recorder import FfmpegVideoWriter
 from global_config import ROOT_DIR
@@ -540,6 +541,6 @@ def play(args, play_args):
 
 
 if __name__ == "__main__":
-    register_tasks()
+    register_all_tasks()
     args, play_args = parse_adjustable_args()
     play(args, play_args)

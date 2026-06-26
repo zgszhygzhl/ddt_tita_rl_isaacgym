@@ -35,7 +35,6 @@ import torch.nn as nn
 from torch.distributions import Normal
 from torch.nn.modules import rnn
 from .actor_critic import ActorCritic, get_activation
-from utils import unpad_trajectories
 
 class ActorCriticRecurrent(ActorCritic):
     is_recurrent = True
@@ -104,6 +103,8 @@ class Memory(torch.nn.Module):
             if hidden_states is None:
                 raise ValueError("Hidden states not passed to memory module during policy update")
             out, _ = self.rnn(input, hidden_states)
+            # 延迟导入，避免 modules -> utils -> task_registry -> runner -> modules 的循环导入
+            from utils.utils import unpad_trajectories
             out = unpad_trajectories(out, masks)
         else:
             # inference mode (collection): use hidden states of last step
