@@ -29,7 +29,8 @@ from PIL import Image, ImageDraw, ImageFont
 
 from envs import LeggedRobot
 from modules import *  # noqa: F401,F403
-from utils import get_args, get_load_path, task_registry
+from utils import get_args, get_load_path
+from utils.task_registry import task_registry
 from tasks import register_all_tasks
 from utils.helpers import class_to_dict
 from utils.video_recorder import FfmpegVideoWriter

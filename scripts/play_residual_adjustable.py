@@ -129,6 +129,11 @@ def get_residual_play_args():
          "help": "Environment id used for metrics plotting. Default: first selected video env."},
         {"name": "--play_metrics_max_points", "type": int, "default": 2500,
          "help": "Maximum points drawn in metrics PNG."},
+
+        {"name": "--play_random_reset", "action": "store_true", "default": False,
+         "help": "Use recovery random reset during inference."},
+        {"name": "--play_disturbance", "action": "store_true", "default": False,
+         "help": "Enable moderate push and force disturbance during inference."},
     ]
 
     args = gymutil.parse_arguments(
@@ -321,6 +326,28 @@ def play(args):
 
     # 复用 play_climb_adjustable.py 的可调地形逻辑
     set_eval_terrain(env_cfg, args)
+
+    # Recovery 推理测试：只保留两个开关，避免命令太复杂。
+    if bool(args.play_random_reset):
+        env_cfg.init_state.recovery_roll_range = [-0.60, 0.60]
+        env_cfg.init_state.recovery_pitch_range = [-0.60, 0.60]
+        env_cfg.init_state.recovery_yaw_range = [-0.30, 0.30]
+        env_cfg.init_state.recovery_init_x_range = [-1.20, 1.20]
+        env_cfg.init_state.recovery_init_y_range = [-0.40, 0.40]
+        env_cfg.init_state.recovery_init_z_range = [0.42, 0.62]
+        env_cfg.init_state.recovery_folded_prob = 0.20
+
+    if bool(args.play_disturbance):
+        env_cfg.domain_rand.push_robots = True
+        env_cfg.domain_rand.push_interval_s = 2.0
+        env_cfg.domain_rand.max_push_vel_xy = 0.5
+
+        env_cfg.domain_rand.disturbance = True
+        env_cfg.domain_rand.disturbance_range = [-35.0, 35.0]
+        env_cfg.domain_rand.disturbance_interval = 100
+    else:
+        env_cfg.domain_rand.push_robots = False
+        env_cfg.domain_rand.disturbance = False
 
     # 推理环境数量由 --play_num_envs 控制
     args.num_envs = int(args.play_num_envs)

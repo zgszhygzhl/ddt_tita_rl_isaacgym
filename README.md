@@ -1,4 +1,4 @@
-conda deactivated
+conda deactivate
 conda activate ddtgym
 cd /root/gpufree-data/ddt_tita_rl_isaacgym
 
@@ -14,19 +14,19 @@ python train.py \
 
 训练专家
 python scripts/train_residual.py \
-  --task=d1h_disc_residual \
+  --task=d1h_slip_residual \
   --base_task=d1h_base \
   --base_ckpt logs/d1h_base/Jun25_17-24-39_d1h_base/checkpoints/model_2000.pt \
   --headless \
   --num_envs 4096 \
   --max_iterations 8000 \
-  --residual_alpha 0.65 \
+  --residual_alpha 0.45 \
   --residual_delta_clip 0 \
   --residual_alpha_warmup_steps 200 \
   --residual_alpha_warmup_min 0.25 \
   --residual_std_min 0.4 \
-  --residual_std_max 1.0 \
-  --run_name disc_residual_k065
+  --residual_std_max 0.85 \
+  --run_name slip_residual_k045
 
 推理 录制
 python simple_play.py \
@@ -39,17 +39,17 @@ python play_climb_adjustable.py \
   --task=d1h_evt1_climb \
   --headless \
   --load_run Jun25_01-27-27_d1h_evt1_climb \
-  --checkpoint 8000 \
-  --play_vx 0.5 \
+  --checkpoint 3400 \
+  --play_vx 0.55 \
   --play_vy 0.0 \
   --play_yaw 0.0 \
   --play_terrain stairs_down \
-  --play_stair_height 0.15 \
+  --play_stair_height 0.11 \
   --play_step_width 0.55 \
   --play_num_envs 16 \
   --play_video_num_envs 4 \
   --play_duration 20 \
-  --play_output play8000_15cm_v50.mp4
+  --play_output play3400_11cm_v55.mp4
 
 推理平地
 python play_climb_adjustable.py \
@@ -69,17 +69,37 @@ python play_climb_adjustable.py \
 
 推理专家
 python scripts/play_residual_adjustable.py \
-  --task=d1h_disc_residual \
+  --task=d1h_recovery_residual \
   --base_task=d1h_base \
   --base_ckpt logs/d1h_base/Jun25_17-24-39_d1h_base/checkpoints/model_2000.pt \
-  --load_run Jun26_12-08-07_disc_residual_k065 \
-  --checkpoint 800 \
+  --load_run Jun27_15-07-07_recovery_residual_k060 \
+  --checkpoint 1600 \
   --headless \
-  --play_terrain stairs_down \
-  --play_stair_height 0.07 \
-  --play_vx 0.55 \
-  --play_duration 15 \
-  --play_output disc_residual_play_h007_v055_800.mp4
+  --residual_alpha 0.60 \
+  --residual_delta_clip 0 \
+  --play_terrain stairs_up \
+  --play_stair_height 0.15 \
+  --play_vx 0.0 \
+  --play_duration 10 \
+  --play_output recovery_residual_play_h015_v000_1600.mp4
+
+
+python scripts/play_residual_adjustable.py \
+  --task=d1h_recovery_residual \
+  --base_task=d1h_base \
+  --base_ckpt logs/d1h_base/Jun25_17-24-39_d1h_base/checkpoints/model_2000.pt \
+  --load_run Jun27_15-07-07_recovery_residual_k060 \
+  --checkpoint 2400 \
+  --headless \
+  --residual_alpha 0.60 \
+  --residual_delta_clip 0 \
+  --play_terrain mixed \
+  --play_stair_height 0.15 \
+  --play_vx 0.0 \
+  --play_random_reset \
+  --play_disturbance \
+  --play_duration 10 \
+  --play_output recovery_residual_play_h015_v000_2400.mp4
 
 
 看板
@@ -92,14 +112,6 @@ tmux
 tmux new -s d1h_moe_train
 tmux ls
 tmux attach -t d1h_moe_train
-
-
-
-
-
-
-
-
 
 
 

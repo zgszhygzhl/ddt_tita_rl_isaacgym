@@ -32,7 +32,7 @@ class D1hDiscResidualCfg(Y1v0hEvt1ClimbCfg):
 
         max_curriculum_x = 1.0
         max_curriculum_y = 0.15
-        min_curriculum_x = -0.3
+        min_curriculum_x = 0.0
         min_curriculum_y = -0.15
         max_curriculum_z = 0.25
 
@@ -47,7 +47,7 @@ class D1hDiscResidualCfg(Y1v0hEvt1ClimbCfg):
         class ranges(Y1v0hEvt1ClimbCfg.commands.ranges):
             # 先聚焦 0.2~0.55 m/s 上台阶。
             # 后面如果稳定，再把上限推到 0.7 或 1.0。
-            lin_vel_x = [0.25, 0.55]
+            lin_vel_x = [0.35, 0.55]
             lin_vel_y = [-0.08, 0.08]
             ang_vel_yaw = [-0.10, 0.10]
             heading = [-0.5, 0.5]
@@ -58,7 +58,7 @@ class D1hDiscResidualCfg(Y1v0hEvt1ClimbCfg):
 
         # 双脚同时离地判定阈值和容忍时间。
         # grace_time 太小会惩罚接触噪声；太大又会放过真正跳跃。
-        both_feet_air_contact_force = 5.0
+        both_feet_air_contact_force = 3.0
         both_feet_air_grace_time = 0.015
         both_feet_air_ramp_time = 0.025
 
@@ -80,15 +80,15 @@ class D1hDiscResidualCfg(Y1v0hEvt1ClimbCfg):
             tracking_ang_vel = 5.0
 
             # 垂向速度和姿态稳定更重要。
-            lin_vel_z = -3.0
-            ang_vel_xy = -0.08
-            orientation = -12.0
+            lin_vel_z = -2.0
+            ang_vel_xy = -0.05
+            orientation = -10.0
             base_height = -20.0
 
             # 动作平滑略加重，避免 residual 大幅抖动。
             powers = -2e-5
             dof_acc = -3.0e-7
-            action_rate = -0.12
+            action_rate = -0.15
             action_smoothness = 0.0
 
             collision = -10.0
@@ -100,14 +100,14 @@ class D1hDiscResidualCfg(Y1v0hEvt1ClimbCfg):
             stumble = 0.0
 
             # 不要把 no_gait 加太大，否则会鼓励双脚一直接触，反而不利于形成类步态。
-            no_gait = 1.5
+            no_gait = 1.0
 
             # 关键：打开双脚同时离地惩罚，抑制纯跳。
-            both_feet_air = -5.0
+            both_feet_air = 3.0
 
             # 关键：加重向上弹跳惩罚。
-            upward_vel_spike = -15.0
-            contact_upward_bounce = -10.0
+            upward_vel_spike = -13.0
+            contact_upward_bounce = -9.0
 
             # 支撑几何约束，防止一条腿伸太远或身体跑出支撑线。
             body_pos_to_feet_x = 1.0
@@ -115,12 +115,12 @@ class D1hDiscResidualCfg(Y1v0hEvt1ClimbCfg):
             body_feet_distance_y = -100.0
 
             # z 对称不要太大，否则会压制一腿上台阶、一腿跟随的高度差。
-            body_symmetry_y = 0.2
+            body_symmetry_y = 0.3
             body_symmetry_z = 0.03
 
             heading = 10.0
             upward = 1.0
-            head_los_distance = -25.0
+            head_los_distance = -80.0
 
     class domain_rand(Y1v0hEvt1ClimbCfg.domain_rand):
         # residual 第一版不要太强随机化，先学会稳定上台阶。
@@ -161,7 +161,7 @@ class D1hDiscResidualCfg(Y1v0hEvt1ClimbCfg):
         # utils/terrain.py 中实际顺序：
         # [slope, rough_slope, stairs_down branch, stairs_up branch, discrete, stones, gap, pit, ...]
         # 这里主要训练 stairs_up residual。
-        terrain_proportions = [0.1, 0.0, 0.8, 0.1, 0.0, 0.0, 0.0, 0.0, 0.0]
+        terrain_proportions = [0.075, 0.0, 0.85, 0.075, 0.0, 0.0, 0.0, 0.0, 0.0]
 
         slope = [0.0, 0.02]
 
@@ -190,7 +190,7 @@ class D1hDiscResidualCfgPPO(Y1v0hEvt1ClimbCfgPPO):
         # residual 修正量 L2 正则。
         # 作用：鼓励 expert 少改 base，只在台阶/冲击等必要时修正动作。
         # 过大可能导致上不去；过小则 expert 可能重新变成大幅跳跃策略。
-        residual_l2_coef = 0.001
+        residual_l2_coef = 0.0015
 
     class policy(Y1v0hEvt1ClimbCfgPPO.policy):
         # residual expert 不需要原 climb 的大网络。

@@ -4,21 +4,33 @@
 from utils.task_registry import task_registry
 from envs import LeggedRobot
 
-from configs.tita_constraint_config import TitaConstraintRoughCfg, TitaConstraintRoughCfgPPO
-from configs.d1h_constraint_config import D1HConstraintRoughCfg, D1HConstraintRoughCfgPPO
+from configs.tita_constraint_config import (
+    TitaConstraintRoughCfg,
+    TitaConstraintRoughCfgPPO,
+)
+from configs.d1h_constraint_config import (
+    D1HConstraintRoughCfg,
+    D1HConstraintRoughCfgPPO,
+)
 from configs.y1v0h_evt1_climb_config import (
     Y1v0hEvt1Climb,
     Y1v0hEvt1ClimbCfg,
     Y1v0hEvt1ClimbCfgPPO,
 )
 
+
 # d1h_base is optional so this file still works before d1h_base_config.py is copied in.
 try:
-    from configs.d1h_base_config import D1hBase, D1hBaseCfg, D1hBaseCfgPPO
+    from configs.d1h_base_config import (
+        D1hBase,
+        D1hBaseCfg,
+        D1hBaseCfgPPO,
+    )
 except ModuleNotFoundError:
     D1hBase = None
     D1hBaseCfg = None
     D1hBaseCfgPPO = None
+
 
 try:
     from configs.d1h_disc_residual_config import (
@@ -30,6 +42,31 @@ except ModuleNotFoundError:
     D1hDiscResidual = None
     D1hDiscResidualCfg = None
     D1hDiscResidualCfgPPO = None
+
+
+try:
+    from configs.d1h_recovery_residual_config import (
+        D1hRecoveryResidual,
+        D1hRecoveryResidualCfg,
+        D1hRecoveryResidualCfgPPO,
+    )
+except ModuleNotFoundError:
+    D1hRecoveryResidual = None
+    D1hRecoveryResidualCfg = None
+    D1hRecoveryResidualCfgPPO = None
+
+
+try:
+    from configs.d1h_slip_residual_config import (
+        D1hSlipResidual,
+        D1hSlipResidualCfg,
+        D1hSlipResidualCfgPPO,
+    )
+except ModuleNotFoundError:
+    D1hSlipResidual = None
+    D1hSlipResidualCfg = None
+    D1hSlipResidualCfgPPO = None
+
 
 def register_all_tasks():
     """Register every available task exactly once for the current process."""
@@ -69,4 +106,20 @@ def register_all_tasks():
             D1hDiscResidual,
             D1hDiscResidualCfg(),
             D1hDiscResidualCfgPPO(),
+        )
+
+    if D1hRecoveryResidual is not None:
+        task_registry.register(
+            "d1h_recovery_residual",
+            D1hRecoveryResidual,
+            D1hRecoveryResidualCfg(),
+            D1hRecoveryResidualCfgPPO(),
+        )
+
+    if D1hSlipResidual is not None:
+        task_registry.register(
+            "d1h_slip_residual",
+            D1hSlipResidual,
+            D1hSlipResidualCfg(),
+            D1hSlipResidualCfgPPO(),
         )
