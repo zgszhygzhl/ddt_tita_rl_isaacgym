@@ -32,6 +32,7 @@ def get_args():
         {"name": "--gate_temperature", "type": float, "default": 1.0},
         {"name": "--gate_init_weight", "type": float, "default": 0.05},
         {"name": "--gate_aux_coef", "type": float, "default": 0.10},
+        {"name": "--gate_aux_target_mode", "type": str, "default": None},
         {"name": "--record_video", "action": "store_true", "default": False},
         {"name": "--headless", "action": "store_true", "default": False},
         {"name": "--rl_device", "type": str, "default": "cuda:0"},
@@ -83,6 +84,8 @@ def train(args):
     train_cfg.policy.gate_temperature = args.gate_temperature
     train_cfg.policy.gate_init_weight = args.gate_init_weight
     train_cfg.algorithm.gate_aux_coef = args.gate_aux_coef
+    if args.gate_aux_target_mode is not None:
+        train_cfg.policy.gate_aux_target_mode = args.gate_aux_target_mode
     train_cfg.runner.max_iterations = args.max_iterations
     train_cfg.runner.run_name = args.run_name
     train_cfg.runner.record_video = args.record_video

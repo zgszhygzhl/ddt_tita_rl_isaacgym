@@ -94,7 +94,8 @@ class ActorCriticMoEGate(nn.Module):
         self, num_prop, num_scan, num_critic_obs, num_priv_latent, num_hist, num_actions,
         init_noise_std=0.35, activation="elu", num_costs=6,
         gate_hidden_dims=(128, 64), critic_hidden_dims=(256, 128, 64),
-        gate_top_k=2, gate_temperature=1.0, gate_init_weight=0.05, residual_alpha=0.60,
+        gate_top_k=2, gate_temperature=1.0, gate_init_weight=0.05,
+        gate_aux_target_mode="estimator_alpha", residual_alpha=0.60,
         residual_delta_clip=0.0, base_ckpt="", stair_ckpt="", slip_ckpt="",
         recovery_ckpt="", estimator_ckpt="",
         base_policy_class_name="ActorCriticBarlowTwins",
@@ -124,6 +125,12 @@ class ActorCriticMoEGate(nn.Module):
         self.gate_temperature = float(gate_temperature)
         self.residual_alpha = float(residual_alpha)
         self.residual_delta_clip = float(residual_delta_clip)
+        self.gate_aux_target_mode = str(gate_aux_target_mode).lower()
+        valid_target_modes = ("estimator_alpha", "stair_warmup_alpha")
+        if self.gate_aux_target_mode not in valid_target_modes:
+            raise ValueError(
+                f"Unsupported gate_aux_target_mode: {gate_aux_target_mode!r}"
+            )
 
         specs = (
             ("base", base_policy_class_name, base_policy_cfg, base_ckpt),
@@ -247,9 +254,15 @@ class ActorCriticMoEGate(nn.Module):
             return torch.zeros((), device=next(self.parameters()).device)
 
         gray_hat = self.last_gray_hat.detach()
-        target_stair = torch.clamp(2.5 * gray_hat[:, 0], 0.0, 0.8)
-        target_slip = torch.clamp(gray_hat[:, 2], 0.0, 1.0)
-        target_recovery = torch.clamp(gray_hat[:, 3], 0.0, 1.0)
+        if self.gate_aux_target_mode == "stair_warmup_alpha":
+            target_stair = torch.full_like(gray_hat[:, 0], 0.6)
+            target_slip = torch.zeros_like(gray_hat[:, 0])
+            target_recovery = torch.zeros_like(gray_hat[:, 0])
+        else:
+            target_stair = 0.6 * torch.clamp(2.5 * gray_hat[:, 0], 0.0, 1.0)
+            target_slip = 0.45 * torch.clamp(gray_hat[:, 2], 0.0, 1.0)
+            target_recovery = 0.6 * torch.clamp(gray_hat[:, 3], 0.0, 1.0)
+
         target = torch.stack(
             (target_stair, target_slip, target_recovery),
             dim=-1,

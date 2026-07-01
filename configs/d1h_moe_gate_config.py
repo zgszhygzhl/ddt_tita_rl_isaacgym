@@ -102,6 +102,7 @@ class D1hMoEGateCfgPPO(D1hDiscResidualCfgPPO):
         gate_top_k = 2
         gate_temperature = 1.0
         gate_init_weight = 0.05
+        gate_aux_target_mode = "estimator_alpha"
         residual_alpha = 0.60
         residual_delta_clip = 0.0
         base_ckpt = ""
@@ -226,6 +227,7 @@ class D1hMoEGateStairCfgPPO(D1hMoEGateCfgPPO):
 
     class policy(D1hMoEGateCfgPPO.policy):
         gate_init_weight = 0.05
+        gate_aux_target_mode = "stair_warmup_alpha"
         residual_alpha = 1.0
         residual_delta_clip = 0.0
 
