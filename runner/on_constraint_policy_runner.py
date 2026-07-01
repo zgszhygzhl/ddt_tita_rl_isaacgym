@@ -13,7 +13,7 @@ from torch.utils.tensorboard import SummaryWriter
 import torch
 from global_config import ROOT_DIR
 
-from modules import ActorCriticRMA,ActorCriticBarlowTwins
+from modules import ActorCriticRMA, ActorCriticBarlowTwins, ActorCriticMoEGate
 from algorithm import NP3O
 from envs.vec_env import VecEnv
 from modules.depth_backbone import DepthOnlyFCBackbone58x87, RecurrentDepthBackbone
@@ -679,4 +679,3 @@ class OnConstraintPolicyRunner:
         if device is not None:
             self.alg.actor_critic.to(device)
         return self.alg.actor_critic
-    

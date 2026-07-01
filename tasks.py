@@ -68,6 +68,17 @@ except ModuleNotFoundError:
     D1hSlipResidualCfgPPO = None
 
 
+try:
+    from configs.d1h_moe_gate_config import (
+        D1hMoEGate,
+        D1hMoEGateCfg,
+        D1hMoEGateCfgPPO,
+    )
+except ModuleNotFoundError:
+    D1hMoEGate = None
+    D1hMoEGateCfg = None
+    D1hMoEGateCfgPPO = None
+
 def register_all_tasks():
     """Register every available task exactly once for the current process."""
 
@@ -122,4 +133,12 @@ def register_all_tasks():
             D1hSlipResidual,
             D1hSlipResidualCfg(),
             D1hSlipResidualCfgPPO(),
+        )
+
+    if D1hMoEGate is not None:
+        task_registry.register(
+            "d1h_moe_gate",
+            D1hMoEGate,
+            D1hMoEGateCfg(),
+            D1hMoEGateCfgPPO(),
         )
