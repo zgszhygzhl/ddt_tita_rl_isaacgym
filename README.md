@@ -69,19 +69,38 @@ python play_climb_adjustable.py \
 
 推理专家
 python scripts/play_residual_adjustable.py \
-  --task=d1h_recovery_residual \
+  --task=d1h_disc_residual \
   --base_task=d1h_base \
   --base_ckpt logs/d1h_base/Jun25_17-24-39_d1h_base/checkpoints/model_2000.pt \
-  --load_run Jun27_15-07-07_recovery_residual_k060 \
-  --checkpoint 1600 \
+  --load_run Jun26_16-44-41_disc_residual_k060 \
+  --checkpoint 3000 \
   --headless \
   --residual_alpha 0.60 \
   --residual_delta_clip 0 \
-  --play_terrain stairs_up \
+  --play_terrain stairs_down \
   --play_stair_height 0.15 \
-  --play_vx 0.0 \
+  --play_vx 0.55 \
   --play_duration 10 \
-  --play_output recovery_residual_play_h015_v000_1600.mp4
+  --play_output disc_residual_play_h015_v055_3000.mp4
+
+python scripts/play_residual_adjustable.py \
+  --task=d1h_slip_residual \
+  --base_task=d1h_base \
+  --base_ckpt logs/d1h_base/Jun25_17-24-39_d1h_base/checkpoints/model_2000.pt \
+  --load_run Jun27_17-11-06_slip_residual_k045 \
+  --checkpoint 2000 \
+  --headless \
+  --play_terrain slope \
+  --play_slope 0.03 \
+  --play_num_envs 16 \
+  --play_video_num_envs 4 \
+  --play_duration 10 \
+  --play_vx 0.55 \
+  --play_vy 0.0 \
+  --play_yaw 0.0 \
+  --residual_alpha 0.45 \
+  --residual_delta_clip 0.55 \
+  --play_output slip_residual_v035_slope003.mp4
 
 
 python scripts/play_residual_adjustable.py \
@@ -113,11 +132,118 @@ tmux new -s d1h_moe_train
 tmux ls
 tmux attach -t d1h_moe_train
 
+step_up_score         用 height scan 算前方是否有正高度障碍；
+slope_score           用前后高度差算局部坡度；
+traction_loss_score   用摩擦系数、横滑、轮速空转、速度超调综合算；
+instability_score     用姿态、base 高度、roll/pitch 角速度算；
+stall_score           用命令速度、实际速度、轮速、traction_loss 算推进受阻。
+
+地形网络收集数据
+base
+python scripts/collect_moe_terrain_dataset.py \
+  --scenario normal \
+  --controller base \
+  --task d1h_base \
+  --base_task d1h_base \
+  --base_ckpt logs/d1h_base/Jun25_17-24-39_d1h_base/checkpoints/model_2000.pt \
+  --headless \
+  --num_envs 256 \
+  --steps 2000 \
+  --sample_every 4 \
+  --vx_min -0.30 \
+  --vx_max 0.75 \
+  --vy_min -0.14 \
+  --vy_max 0.12 \
+  --yaw_min -0.30 \
+  --yaw_max 0.30 \
+  --cmd_resample_steps 250 \
+  --record_video \
+  --video_output data/moe_terrain/normal_clean_full.mp4 \
+  --video_every 4 \
+  --video_num_envs 4 \
+  --output data/moe_terrain/normal_clean_video_000.pt
+ 
+ disc
+ python scripts/collect_moe_terrain_dataset.py \
+  --scenario stair \
+  --controller residual \
+  --task d1h_disc_residual \
+  --base_task d1h_base \
+  --base_ckpt logs/d1h_base/Jun25_17-24-39_d1h_base/checkpoints/model_2000.pt \
+  --residual_ckpt logs/d1h_disc_residual/Jun26_16-44-41_disc_residual_k060/checkpoints/model_3000.pt \
+  --headless \
+  --num_envs 256 \
+  --steps 1000 \
+  --sample_every 4 \
+  --vx_min 0.15 \
+  --vx_max 0.70 \
+  --vy_min -0.05 \
+  --vy_max 0.05 \
+  --yaw_min -0.12 \
+  --yaw_max 0.12 \
+  --cmd_resample_steps 250 \
+  --play_stair_height 0.04 \
+  --play_step_width 0.55 \
+  --residual_alpha 0.60 \
+  --residual_delta_clip 0 \
+  --record_video \
+  --video_output data/moe_terrain/stair_h004_full_000.mp4 \
+  --video_every 4 \
+  --video_num_envs 4 \
+  --output data/moe_terrain/stair_h004_000.pt
 
 
+  rec
+  python scripts/collect_moe_terrain_dataset.py \
+  --scenario recovery \
+  --controller residual \
+  --task d1h_recovery_residual \
+  --base_task d1h_base \
+  --base_ckpt logs/d1h_base/Jun25_17-24-39_d1h_base/checkpoints/model_2000.pt  \
+  --residual_ckpt logs/d1h_recovery_residual/Jun27_15-07-07_recovery_residual_k060/checkpoints/model_3000.pt \
+  --headless \
+  --num_envs 256 \
+  --steps 2000 \
+  --sample_every 2 \
+  --vx_min 0.00 \
+  --vx_max 0.30 \
+  --vy_min -0.04 \
+  --vy_max 0.04 \
+  --yaw_min -0.10 \
+  --yaw_max 0.10 \
+  --cmd_resample_steps 200 \
+  --residual_alpha 0.60 \
+  --residual_delta_clip 0 \
+  --record_video \
+  --video_output data/moe_terrain/recovery_full_000.mp4 \
+  --video_every 2 \
+  --video_num_envs 4 \
+  --output data/moe_terrain/recovery_000.pt
 
 
-
+  slip
+python scripts/collect_moe_terrain_dataset.py \
+  --scenario slip \
+  --controller residual \
+  --task d1h_slip_residual \
+  --base_task d1h_base \
+  --base_ckpt logs/d1h_base/Jun25_17-24-39_d1h_base/checkpoints/model_2000.pt \
+  --residual_ckpt logs/d1h_slip_residual/Jun27_17-11-06_slip_residual_k045/checkpoints/model_2000.pt \
+  --headless \
+  --num_envs 256 \
+  --steps 1500 \
+  --sample_every 4 \
+  --vx_min 0.10 \
+  --vx_max 0.55 \
+  --vy_min -0.05 \
+  --vy_max 0.05 \
+  --yaw_min -0.15 \
+  --yaw_max 0.15 \
+  --cmd_resample_steps 250 \
+  --play_slope 0.00 \
+  --residual_alpha 0.45 \
+  --residual_delta_clip 0.55 \
+  --output data/moe_terrain/slip_flat_000.pt
 
 ## 0. 指引
 
