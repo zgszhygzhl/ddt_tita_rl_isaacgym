@@ -247,16 +247,24 @@ class ActorCriticMoEGate(nn.Module):
             return torch.zeros((), device=next(self.parameters()).device)
 
         gray_hat = self.last_gray_hat.detach()
+        target_stair = torch.clamp(2.5 * gray_hat[:, 0], 0.0, 0.8)
+        target_slip = torch.clamp(gray_hat[:, 2], 0.0, 1.0)
+        target_recovery = torch.clamp(gray_hat[:, 3], 0.0, 1.0)
         target = torch.stack(
-            (
-                gray_hat[:, 0],
-                gray_hat[:, 2],
-                gray_hat[:, 3],
-            ),
+            (target_stair, target_slip, target_recovery),
             dim=-1,
         )
-        target = torch.clamp(target, 0.0, 1.0)
-        return F.binary_cross_entropy_with_logits(self.last_gate_logits, target)
+        bce = F.binary_cross_entropy_with_logits(
+            self.last_gate_logits,
+            target,
+            reduction="none",
+        )
+        branch_weights = torch.tensor(
+            [3.0, 1.0, 1.0],
+            device=bce.device,
+            dtype=bce.dtype,
+        )
+        return (bce * branch_weights).mean()
 
     def update_distribution(self, obs):
         mean = self.act_mean(obs)

@@ -158,11 +158,11 @@ python scripts/train_moe_gate.py \
   --headless \
   --num_envs 4096 \
   --max_iterations 6000 \
-  --run_name gate_top2_v1 \
+  --run_name gate_sigmoid3_aux010 \
   --residual_alpha 1.0 \
   --residual_delta_clip 0.0 \
-  --gate_top_k 2 \
-  --gate_temperature 1.0 \
+  --gate_aux_coef 0.20 \
+  --gate_init_weight 0.05 \
   --record_video
 
 
