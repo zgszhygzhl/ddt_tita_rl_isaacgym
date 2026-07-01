@@ -1,7 +1,9 @@
+import math
 from copy import deepcopy
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.distributions import Normal
 
 from modules.actor_critic import ActorCriticBarlowTwins, ActorCriticRMA
@@ -92,7 +94,7 @@ class ActorCriticMoEGate(nn.Module):
         self, num_prop, num_scan, num_critic_obs, num_priv_latent, num_hist, num_actions,
         init_noise_std=0.35, activation="elu", num_costs=6,
         gate_hidden_dims=(128, 64), critic_hidden_dims=(256, 128, 64),
-        gate_top_k=2, gate_temperature=1.0, residual_alpha=0.60,
+        gate_top_k=2, gate_temperature=1.0, gate_init_weight=0.05, residual_alpha=0.60,
         residual_delta_clip=0.0, base_ckpt="", stair_ckpt="", slip_ckpt="",
         recovery_ckpt="", estimator_ckpt="",
         base_policy_class_name="ActorCriticBarlowTwins",
@@ -146,7 +148,18 @@ class ActorCriticMoEGate(nn.Module):
         self._freeze(self.estimator)
         print(f"[moe_gate] loaded estimator epoch={estimator_state.get('epoch', 'unknown')} path={estimator_ckpt}")
 
-        self.gate_actor = _mlp(num_prop + 8, gate_hidden_dims, 4, activation)
+        self.gate_actor = _mlp(num_prop + 8, gate_hidden_dims, 3, activation)
+        gate_init_weight = float(gate_init_weight)
+        if not 0.0 < gate_init_weight < 1.0:
+            raise ValueError("gate_init_weight must be strictly between 0 and 1")
+        gate_output = next(
+            module for module in reversed(self.gate_actor) if isinstance(module, nn.Linear)
+        )
+        nn.init.zeros_(gate_output.weight)
+        nn.init.constant_(
+            gate_output.bias,
+            math.log(gate_init_weight / (1.0 - gate_init_weight)),
+        )
         self.critic = _mlp(num_critic_obs, critic_hidden_dims, 1, activation)
         self.cost = _mlp(num_critic_obs, critic_hidden_dims, num_costs, activation, nn.Softplus())
         self.std = nn.Parameter(init_noise_std * torch.ones(num_actions))
@@ -183,39 +196,67 @@ class ActorCriticMoEGate(nn.Module):
 
     def compute_gate_weights(self, obs):
         obs_prop = obs[:, :self.num_prop]
-        obs_hist = obs[:, -self.num_hist * self.num_prop:].view(-1, self.num_hist, self.num_prop)
+        obs_hist = obs[:, -self.num_hist * self.num_prop:].view(
+            -1, self.num_hist, self.num_prop
+        )
         with torch.no_grad():
             v_hat, gray_hat = self.estimator(obs_hist)
-        self.last_v_hat = v_hat
-        self.last_gray_hat = gray_hat
-        self.last_gate_logits = self.gate_actor(torch.cat((obs_prop, v_hat, gray_hat), dim=-1))
-        self.last_gate_weights = topk_softmax(
-            self.last_gate_logits, self.gate_top_k, self.gate_temperature
+
+        self.last_v_hat = v_hat.detach()
+        self.last_gray_hat = gray_hat.detach()
+        self.last_gate_logits = self.gate_actor(
+            torch.cat((obs_prop, v_hat, gray_hat), dim=-1)
         )
+        self.last_gate_weights = torch.sigmoid(self.last_gate_logits)
         return self.last_gate_weights
 
     def act_mean(self, obs):
         with torch.no_grad():
             base_action = self._policy_mean(self.base_actor, obs)
-            deltas = (
-                self._policy_mean(self.stair_actor, obs),
-                self._policy_mean(self.slip_actor, obs),
-                self._policy_mean(self.recovery_actor, obs),
-            )
+            delta_stair = self._policy_mean(self.stair_actor, obs)
+            delta_slip = self._policy_mean(self.slip_actor, obs)
+            delta_recovery = self._policy_mean(self.recovery_actor, obs)
+
         weights = self.compute_gate_weights(obs)
-        residual_delta = sum(
-            weights[:, index:index + 1] * delta
-            for index, delta in enumerate(deltas, start=1)
+        w_stair = weights[:, 0:1]
+        w_slip = weights[:, 1:2]
+        w_recovery = weights[:, 2:3]
+        residual_delta = (
+            w_stair * delta_stair
+            + w_slip * delta_slip
+            + w_recovery * delta_recovery
         )
         if self.residual_delta_clip > 0.0:
             residual_delta = torch.clamp(
                 residual_delta, -self.residual_delta_clip, self.residual_delta_clip
             )
+
         self.current_delta = self.residual_alpha * residual_delta
-        mean_action = base_action + self.current_delta
-        self.last_delta_norm = torch.norm(self.current_delta, dim=-1).mean().detach()
-        self.last_saturation_ratio = (mean_action.abs() > 0.95).float().mean().detach()
-        return torch.clamp(mean_action, -1.0, 1.0)
+        mean_action = torch.clamp(base_action + self.current_delta, -1.0, 1.0)
+        with torch.no_grad():
+            self.last_delta_norm = torch.norm(
+                self.current_delta.detach(), dim=-1
+            ).mean()
+            self.last_saturation_ratio = (
+                mean_action.detach().abs() > 0.95
+            ).float().mean()
+        return mean_action
+
+    def gate_auxiliary_loss(self):
+        if self.last_gate_logits is None or self.last_gray_hat is None:
+            return torch.zeros((), device=next(self.parameters()).device)
+
+        gray_hat = self.last_gray_hat.detach()
+        target = torch.stack(
+            (
+                gray_hat[:, 0],
+                gray_hat[:, 2],
+                gray_hat[:, 3],
+            ),
+            dim=-1,
+        )
+        target = torch.clamp(target, 0.0, 1.0)
+        return F.binary_cross_entropy_with_logits(self.last_gate_logits, target)
 
     def update_distribution(self, obs):
         mean = self.act_mean(obs)

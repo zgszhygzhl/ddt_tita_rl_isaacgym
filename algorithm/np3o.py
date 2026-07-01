@@ -38,6 +38,7 @@ class NP3O:
                  #   仅当 actor_critic 有 current_delta 且该系数大于 0 时生效。
                  #   用于鼓励 residual 修正尽量小，避免 expert 完全覆盖 base。
                  residual_l2_coef=0.0,
+                 gate_aux_coef=0.0,
                  **kwargs
                  ):
 
@@ -52,6 +53,7 @@ class NP3O:
         self.actor_critic.to(self.device)
         self.storage = None # initialized later
         self.residual_l2_coef = residual_l2_coef
+        self.gate_aux_coef = gate_aux_coef
         # residual 训练时 base 参数会被 requires_grad=False 冻结。
         # 这里只把可训练参数交给 optimizer，避免 frozen base 进入优化器。
         # 普通 base 训练时所有参数都是可训练的，因此不影响原训练路径。
@@ -200,6 +202,7 @@ class NP3O:
         mean_viol_loss = 0
         mean_surrogate_loss = 0
         mean_imitation_loss = 0
+        mean_gate_aux_loss = 0
         
         if self.actor_critic.is_recurrent:
             generator = self.storage.reccurent_mini_batch_generator(self.num_mini_batches, self.num_learning_epochs)
@@ -264,11 +267,32 @@ class NP3O:
                         torch.sum(torch.square(self.actor_critic.current_delta), dim=-1)
                     )
 
+                gate_aux_loss = 0.0
+                if self.gate_aux_coef > 0.0 and hasattr(
+                    self.actor_critic, "gate_auxiliary_loss"
+                ):
+                    gate_aux_loss = (
+                        self.gate_aux_coef * self.actor_critic.gate_auxiliary_loss()
+                    )
+
                 if self.imi_flag:
                     imitation_loss = self.actor_critic.imitation_learning_loss(obs_batch)
-                    loss = main_loss + combine_value_loss + entropy_loss + self.imi_weight*imitation_loss + residual_l2_loss
+                    loss = (
+                        main_loss
+                        + combine_value_loss
+                        + entropy_loss
+                        + self.imi_weight * imitation_loss
+                        + residual_l2_loss
+                        + gate_aux_loss
+                    )
                 else:
-                    loss = main_loss + combine_value_loss + entropy_loss + residual_l2_loss
+                    loss = (
+                        main_loss
+                        + combine_value_loss
+                        + entropy_loss
+                        + residual_l2_loss
+                        + gate_aux_loss
+                    )
 
                 # Gradient step
                 self.optimizer.zero_grad()
@@ -284,6 +308,10 @@ class NP3O:
                     mean_imitation_loss += imitation_loss.item()
                 else:
                     mean_imitation_loss += 0
+                if isinstance(gate_aux_loss, torch.Tensor):
+                    mean_gate_aux_loss += gate_aux_loss.item()
+                else:
+                    mean_gate_aux_loss += float(gate_aux_loss)
 
                 # if self.imi_flag:
                 #     # imitation module gradient step
@@ -305,10 +333,18 @@ class NP3O:
         mean_viol_loss /= num_updates
         mean_surrogate_loss /= num_updates
         mean_imitation_loss /= num_updates*self.substeps
+        mean_gate_aux_loss /= num_updates
 
         self.storage.clear()
    
-        return mean_value_loss,mean_cost_value_loss,mean_viol_loss,mean_surrogate_loss,mean_imitation_loss
+        return (
+            mean_value_loss,
+            mean_cost_value_loss,
+            mean_viol_loss,
+            mean_surrogate_loss,
+            mean_imitation_loss,
+            mean_gate_aux_loss,
+        )
     
     def update_depth_actor(self, actions_student_batch, actions_teacher_batch):
         if self.if_depth:

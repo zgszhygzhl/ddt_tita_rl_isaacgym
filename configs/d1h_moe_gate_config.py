@@ -87,6 +87,7 @@ class D1hMoEGateCfgPPO(D1hDiscResidualCfgPPO):
         cost_value_loss_coef = 0.1
         cost_viol_loss_coef = 0.1
         residual_l2_coef = 0.01
+        gate_aux_coef = 0.20
 
     class policy(D1hDiscResidualCfgPPO.policy):
         init_noise_std = 0.35
@@ -97,8 +98,10 @@ class D1hMoEGateCfgPPO(D1hDiscResidualCfgPPO):
         imi_flag = False
         gate_hidden_dims = [128, 64]
         critic_hidden_dims = [256, 128, 64]
+        # Kept for backward compatibility; ignored by sigmoid gate.
         gate_top_k = 2
         gate_temperature = 1.0
+        gate_init_weight = 0.05
         residual_alpha = 0.60
         residual_delta_clip = 0.0
         base_ckpt = ""

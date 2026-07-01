@@ -132,6 +132,40 @@ tmux new -s d1h_moe_train
 tmux ls
 tmux attach -t d1h_moe_train
 
+BASE_CKPT=logs/d1h_base/Jun25_17-24-39_d1h_base/checkpoints/model_2000.pt
+
+STAIR_CKPT=logs/d1h_disc_residual/Jun26_16-44-41_disc_residual_k060/checkpoints/model_3000.pt
+
+RECOVERY_CKPT=logs/d1h_recovery_residual/Jun27_15-07-07_recovery_residual_k060/checkpoints/model_3000.pt
+
+SLIP_CKPT=logs/d1h_slip_residual/Jun27_17-11-06_slip_residual_k045/checkpoints/model_2000.pt
+
+ESTIMATOR_CKPT=logs/moe_terrain_estimator/model_latest_best.pt
+
+
+gate训练
+python scripts/train_moe_gate.py \
+  --task d1h_moe_gate \
+  --base_task d1h_base \
+  --stair_task d1h_disc_residual \
+  --slip_task d1h_slip_residual \
+  --recovery_task d1h_recovery_residual \
+  --base_ckpt "$BASE_CKPT" \
+  --stair_ckpt "$STAIR_CKPT" \
+  --slip_ckpt "$SLIP_CKPT" \
+  --recovery_ckpt "$RECOVERY_CKPT" \
+  --estimator_ckpt "$ESTIMATOR_CKPT" \
+  --headless \
+  --num_envs 4096 \
+  --max_iterations 6000 \
+  --run_name gate_top2_v1 \
+  --residual_alpha 1.0 \
+  --residual_delta_clip 0.0 \
+  --gate_top_k 2 \
+  --gate_temperature 1.0 \
+  --record_video
+
+
 step_up_score         用 height scan 算前方是否有正高度障碍；
 slope_score           用前后高度差算局部坡度；
 traction_loss_score   用摩擦系数、横滑、轮速空转、速度超调综合算；

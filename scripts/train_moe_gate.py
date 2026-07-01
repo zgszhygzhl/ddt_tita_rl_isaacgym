@@ -30,6 +30,8 @@ def get_args():
         {"name": "--residual_delta_clip", "type": float, "default": 0.0},
         {"name": "--gate_top_k", "type": int, "default": 2},
         {"name": "--gate_temperature", "type": float, "default": 1.0},
+        {"name": "--gate_init_weight", "type": float, "default": 0.05},
+        {"name": "--gate_aux_coef", "type": float, "default": 0.10},
         {"name": "--record_video", "action": "store_true", "default": False},
         {"name": "--headless", "action": "store_true", "default": False},
         {"name": "--rl_device", "type": str, "default": "cuda:0"},
@@ -43,7 +45,7 @@ def get_args():
         "checkpoint": None,
     }
     args = gymutil.parse_arguments(
-        description="Train the D1H top-2 soft residual MoE gate.",
+        description="Train the D1H independent-sigmoid residual MoE gate.",
         custom_parameters=custom_parameters,
     )
     for field, default in runner_defaults.items():
@@ -79,6 +81,8 @@ def train(args):
     train_cfg.policy.residual_delta_clip = args.residual_delta_clip
     train_cfg.policy.gate_top_k = args.gate_top_k
     train_cfg.policy.gate_temperature = args.gate_temperature
+    train_cfg.policy.gate_init_weight = args.gate_init_weight
+    train_cfg.algorithm.gate_aux_coef = args.gate_aux_coef
     train_cfg.runner.max_iterations = args.max_iterations
     train_cfg.runner.run_name = args.run_name
     train_cfg.runner.record_video = args.record_video

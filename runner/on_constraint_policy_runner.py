@@ -533,7 +533,14 @@ class OnConstraintPolicyRunner:
             #update k value for better expolration
             k_value = self.alg.update_k_value(it)
             
-            mean_value_loss,mean_cost_value_loss,mean_viol_loss,mean_surrogate_loss, mean_imitation_loss = self.alg.update()
+            (
+                mean_value_loss,
+                mean_cost_value_loss,
+                mean_viol_loss,
+                mean_surrogate_loss,
+                mean_imitation_loss,
+                mean_gate_aux_loss,
+            ) = self.alg.update()
 
             stop = time.time()
             learn_time = stop - start
@@ -548,14 +555,14 @@ class OnConstraintPolicyRunner:
         self._close_train_video()
 
     def _log_moe_gate_diagnostics(self, obs, iteration):
-        """Log MoE routing diagnostics on the current per-environment observations."""
+        """Log only the routing and safety signals needed to assess the sigmoid gate."""
         actor = self.alg.actor_critic
         if not hasattr(actor, "compute_gate_weights"):
             return
 
         with torch.no_grad():
             weights = actor.compute_gate_weights(obs).detach()
-        if weights.ndim != 2 or weights.shape[1] != 4:
+        if weights.ndim != 2 or weights.shape[1] != 3:
             return
 
         def write_mean(tag, values, mask=None):
@@ -566,48 +573,31 @@ class OnConstraintPolicyRunner:
                 values = values[mask]
             self.writer.add_scalar(tag, values.float().mean().item(), iteration)
 
-        branch_names = ("none", "stair", "slip", "recovery")
+        branch_names = ("stair", "slip", "recovery")
         for index, name in enumerate(branch_names):
             write_mean(f"Gate/weight_{name}", weights[:, index])
 
-        top1 = torch.argmax(weights, dim=-1)
-        for index, name in enumerate(branch_names):
-            write_mean(f"Gate/top1_{name}", (top1 == index).float())
-
-        entropy = -torch.sum(weights * torch.log(weights.clamp_min(1.0e-8)), dim=-1)
-        write_mean("Gate/entropy", entropy)
-        residual_usage = 1.0 - weights[:, 0]
-        write_mean("Gate/residual_usage", residual_usage)
-        write_mean("Gate/pair_stair_slip", ((weights[:, 1] > 0.0) & (weights[:, 2] > 0.0)).float())
-        write_mean("Gate/pair_stair_recovery", ((weights[:, 1] > 0.0) & (weights[:, 3] > 0.0)).float())
-        write_mean("Gate/pair_slip_recovery", ((weights[:, 2] > 0.0) & (weights[:, 3] > 0.0)).float())
+        residual_sum = weights.sum(dim=-1)
+        residual_max = weights.max(dim=-1).values
+        write_mean("Gate/residual_sum", residual_sum)
+        write_mean("Gate/residual_max", residual_max)
 
         gray_hat = getattr(actor, "last_gray_hat", None)
         if gray_hat is not None and gray_hat.shape[0] == weights.shape[0]:
             gray_hat = gray_hat.detach()
-            estimator_names = (
-                "step_up_score",
-                "slope_score",
-                "traction_loss_score",
-                "instability_score",
-                "stall_score",
-            )
-            for index, name in enumerate(estimator_names):
-                write_mean(f"Estimator/{name}", gray_hat[:, index])
-
             write_mean(
-                "GateByEstimator/est_step_up_gt_04_weight_stair",
-                weights[:, 1],
+                "GateByEstimator/step_up_weight_stair",
+                weights[:, 0],
                 gray_hat[:, 0] > 0.4,
             )
             write_mean(
-                "GateByEstimator/est_traction_gt_04_weight_slip",
-                weights[:, 2],
+                "GateByEstimator/traction_loss_weight_slip",
+                weights[:, 1],
                 gray_hat[:, 2] > 0.4,
             )
             write_mean(
-                "GateByEstimator/est_instability_gt_04_weight_recovery",
-                weights[:, 3],
+                "GateByEstimator/instability_weight_recovery",
+                weights[:, 2],
                 gray_hat[:, 3] > 0.4,
             )
 
@@ -617,7 +607,11 @@ class OnConstraintPolicyRunner:
             return
 
         num_cols = max(int(getattr(self.env.cfg.terrain, "num_cols", 1)), 1)
-        choices = terrain_types.reshape(-1).to(weights.device, dtype=torch.float32) / float(num_cols) + 0.001
+        choices = (
+            terrain_types.reshape(-1).to(weights.device, dtype=torch.float32)
+            / float(num_cols)
+            + 0.001
+        )
         cumulative = torch.as_tensor(
             np.cumsum(np.asarray(proportions, dtype=np.float32)),
             device=weights.device,
@@ -633,26 +627,61 @@ class OnConstraintPolicyRunner:
             "pit",
         )
         lower = choices.new_tensor(0.0)
-        terrain_masks = []
+        terrain_masks = {}
         for index, name in enumerate(terrain_names[:-1]):
             if index >= cumulative.numel():
                 break
             upper = cumulative[index]
-            terrain_masks.append((name, (choices >= lower) & (choices < upper)))
+            terrain_masks[name] = (choices >= lower) & (choices < upper)
             lower = upper
-        terrain_masks.append((terrain_names[-1], choices >= lower))
+        terrain_masks[terrain_names[-1]] = choices >= lower
 
-        for terrain_name, mask in terrain_masks:
-            for index, branch_name in enumerate(branch_names):
-                write_mean(
-                    f"GateByTerrain/{terrain_name}_weight_{branch_name}",
-                    weights[:, index],
-                    mask,
-                )
+        slope_mask = terrain_masks.get("slope")
+        if slope_mask is not None:
+            write_mean("GateByTerrain/slope_residual_sum", residual_sum, slope_mask)
+
+        rough_slope_mask = terrain_masks.get("rough_slope")
+        if rough_slope_mask is not None:
             write_mean(
-                f"GateByTerrain/{terrain_name}_residual_usage",
-                residual_usage,
-                mask,
+                "GateByTerrain/rough_slope_residual_sum",
+                residual_sum,
+                rough_slope_mask,
+            )
+
+        stairs_up_mask = terrain_masks.get("stairs_up")
+        if stairs_up_mask is not None:
+            write_mean(
+                "GateByTerrain/stairs_up_weight_stair",
+                weights[:, 0],
+                stairs_up_mask,
+            )
+            write_mean(
+                "GateByTerrain/stairs_up_residual_sum",
+                residual_sum,
+                stairs_up_mask,
+            )
+            write_mean(
+                "GateByTerrain/stairs_up_residual_max",
+                residual_max,
+                stairs_up_mask,
+            )
+
+        obstacles_mask = terrain_masks.get("obstacles")
+        if obstacles_mask is not None:
+            write_mean(
+                "GateByTerrain/obstacles_weight_stair",
+                weights[:, 0],
+                obstacles_mask,
+            )
+            write_mean(
+                "GateByTerrain/obstacles_weight_recovery",
+                weights[:, 2],
+                obstacles_mask,
+            )
+            write_mean(
+                "GateByTerrain/obstacles_residual_sum",
+                residual_sum,
+                obstacles_mask,
             )
 
     def log(self, locs, width=80, pad=35):
@@ -685,6 +714,7 @@ class OnConstraintPolicyRunner:
         self.writer.add_scalar('Loss/surrogate', locs['mean_surrogate_loss'], locs['it'])
         self.writer.add_scalar('Loss/mean_viol_loss', locs['mean_viol_loss'], locs['it'])
         self.writer.add_scalar('Loss/mean_imitation_loss', locs['mean_imitation_loss'], locs['it'])
+        self.writer.add_scalar('Loss/gate_aux', locs['mean_gate_aux_loss'], locs['it'])
         self.writer.add_scalar('Loss/learning_rate', self.alg.learning_rate, locs['it'])
         self.writer.add_scalar('Policy/mean_noise_std', mean_std.item(), locs['it'])
         if hasattr(self.alg.actor_critic, "last_current_alpha"):
