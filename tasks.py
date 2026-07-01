@@ -73,11 +73,15 @@ try:
         D1hMoEGate,
         D1hMoEGateCfg,
         D1hMoEGateCfgPPO,
+        D1hMoEGateStairCfg,
+        D1hMoEGateStairCfgPPO,
     )
 except ModuleNotFoundError:
     D1hMoEGate = None
     D1hMoEGateCfg = None
     D1hMoEGateCfgPPO = None
+    D1hMoEGateStairCfg = None
+    D1hMoEGateStairCfgPPO = None
 
 def register_all_tasks():
     """Register every available task exactly once for the current process."""
@@ -141,4 +145,12 @@ def register_all_tasks():
             D1hMoEGate,
             D1hMoEGateCfg(),
             D1hMoEGateCfgPPO(),
+        )
+
+    if D1hMoEGate is not None and D1hMoEGateStairCfg is not None:
+        task_registry.register(
+            "d1h_moe_gate_stair",
+            D1hMoEGate,
+            D1hMoEGateStairCfg(),
+            D1hMoEGateStairCfgPPO(),
         )

@@ -260,7 +260,7 @@ class ActorCriticMoEGate(nn.Module):
             reduction="none",
         )
         branch_weights = torch.tensor(
-            [3.0, 1.0, 1.0],
+            [4.0, 1.0, 1.0],
             device=bce.device,
             dtype=bce.dtype,
         )

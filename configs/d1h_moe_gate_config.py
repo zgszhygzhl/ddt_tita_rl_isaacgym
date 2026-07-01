@@ -138,6 +138,117 @@ class D1hMoEGateCfgPPO(D1hDiscResidualCfgPPO):
         video_tile_height = 180
 
 
+class D1hMoEGateStairCfg(D1hMoEGateCfg):
+    class terrain(D1hDiscResidualCfg.terrain):
+        mesh_type = "trimesh"
+        measure_heights = True
+        curriculum = True
+        num_rows = 8
+        num_cols = 20
+        # Rollout-verified mapping: third branch is stairs_up, fourth is stairs_down.
+        terrain_proportions = [0.075, 0.0, 0.85, 0.075, 0.0, 0.0, 0.0, 0.0, 0.0]
+        slope = [0.0, 0.02]
+        step_height = [0.02, 0.16]
+        step_width_range = [0.51, 0.61]
+        discrete_obstacles_height = [0.05, 0.15]
+        pit_depth = [0.0, 0.3]
+        slope_treshold = 0.2
+        max_init_terrain_level = 4
+
+    class commands(D1hDiscResidualCfg.commands):
+        curriculum = True
+        max_curriculum = 0.8
+        max_curriculum_x = 1.0
+        max_curriculum_y = 0.15
+        min_curriculum_x = 0.0
+        min_curriculum_y = -0.15
+        max_curriculum_z = 0.25
+        commands_proportion = [0.75, 0.05, 0.05, 0.05, 0.025, 0.025, 0.025, 0.0, 0.025]
+        max_lin_vel_x_change_rate = 0.5
+        max_lin_vel_y_change_rate = 0.2
+        max_ang_vel_change_rate = 0.3
+        enable_command_buffer = True
+        buffer_smoothing_factor = 0.1
+
+        class ranges(D1hDiscResidualCfg.commands.ranges):
+            lin_vel_x = [0.35, 0.55]
+            lin_vel_y = [-0.08, 0.08]
+            ang_vel_yaw = [-0.10, 0.10]
+            heading = [-0.5, 0.5]
+
+    class domain_rand(D1hDiscResidualCfg.domain_rand):
+        randomize_friction = True
+        friction_range = [0.6, 1.8]
+        randomize_restitution = True
+        restitution_range = [0.0, 0.3]
+        randomize_base_mass = True
+        added_mass_range = [-1.0, 3.0]
+        randomize_base_com = True
+        added_com_range = [-0.1, 0.1]
+        push_robots = True
+        push_interval_s = 15
+        max_push_vel_xy = 0.4
+        randomize_motor = True
+        motor_strength_range = [0.9, 1.1]
+        randomize_kpkd = True
+        kp_range = [0.9, 1.1]
+        kd_range = [0.9, 1.1]
+        randomize_lag_timesteps = True
+        lag_timesteps = 3
+        disturbance = False
+        disturbance_range = [-20.0, 20.0]
+        disturbance_interval = 8
+
+    class rewards(D1hDiscResidualCfg.rewards):
+        slip_contact_force = 3.0
+        wheel_spin_deadband = 8.0
+        vx_overspeed_deadband = 0.08
+        vx_overspeed_max = 0.8
+
+        class scales(D1hDiscResidualCfg.rewards.scales):
+            slip_lateral = 0.0
+            wheel_spin = 0.0
+            base_sideslip = 0.0
+            vx_overspeed = 0.0
+
+
+class D1hMoEGateStairCfgPPO(D1hMoEGateCfgPPO):
+    class algorithm(D1hMoEGateCfgPPO.algorithm):
+        entropy_coef = 0.01
+        learning_rate = 3.0e-4
+        max_grad_norm = 0.5
+        num_learning_epochs = 5
+        num_mini_batches = 4
+        cost_value_loss_coef = 0.1
+        cost_viol_loss_coef = 0.1
+        residual_l2_coef = 0.01
+        gate_aux_coef = 0.20
+
+    class policy(D1hMoEGateCfgPPO.policy):
+        gate_init_weight = 0.05
+        residual_alpha = 1.0
+        residual_delta_clip = 0.0
+
+    class runner(D1hMoEGateCfgPPO.runner):
+        run_name = "gate_stair_warmup"
+        experiment_name = "d1h_moe_gate_stair"
+        policy_class_name = "ActorCriticMoEGate"
+        runner_class_name = "OnConstraintPolicyRunner"
+        algorithm_class_name = "NP3O"
+        max_iterations = 2000
+        num_steps_per_env = 24
+        save_interval = 200
+        record_video = True
+        video_interval = 500
+        video_duration = 6.0
+        video_fps = 30
+        video_num_envs = 16
+        video_tile_rows = 4
+        video_tile_cols = 4
+        video_tile_width = 320
+        video_tile_height = 180
+
+
 class D1hMoEGate(D1hDiscResidual):
     def _contact_mask(self):
         contact_force = getattr(self.cfg.rewards, "slip_contact_force", 3.0)
