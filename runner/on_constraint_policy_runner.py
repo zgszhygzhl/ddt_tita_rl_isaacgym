@@ -297,11 +297,11 @@ class OnConstraintPolicyRunner:
             elif len(proportions) > 1 and choice < proportions[1]:
                 terrain_kind = "rough_slope"
             elif len(proportions) > 3 and choice < proportions[3]:
-                # In utils/terrain.py: if choice < proportions[2], step_height *= -1.
+                # Rollout-verified project mapping: third branch is up, fourth is down.
                 if len(proportions) > 2 and choice < proportions[2]:
-                    terrain_kind = "stairs_down"
-                else:
                     terrain_kind = "stairs_up"
+                else:
+                    terrain_kind = "stairs_down"
             elif len(proportions) > 4 and choice < proportions[4]:
                 terrain_kind = "obstacles"
             elif len(proportions) > 5 and choice < proportions[5]:
@@ -547,6 +547,114 @@ class OnConstraintPolicyRunner:
         self.save(self._checkpoint_path(self.current_learning_iteration), iteration=self.current_learning_iteration)
         self._close_train_video()
 
+    def _log_moe_gate_diagnostics(self, obs, iteration):
+        """Log MoE routing diagnostics on the current per-environment observations."""
+        actor = self.alg.actor_critic
+        if not hasattr(actor, "compute_gate_weights"):
+            return
+
+        with torch.no_grad():
+            weights = actor.compute_gate_weights(obs).detach()
+        if weights.ndim != 2 or weights.shape[1] != 4:
+            return
+
+        def write_mean(tag, values, mask=None):
+            if mask is not None:
+                mask = mask.to(device=values.device, dtype=torch.bool)
+                if mask.numel() != values.shape[0] or not torch.any(mask).item():
+                    return
+                values = values[mask]
+            self.writer.add_scalar(tag, values.float().mean().item(), iteration)
+
+        branch_names = ("none", "stair", "slip", "recovery")
+        for index, name in enumerate(branch_names):
+            write_mean(f"Gate/weight_{name}", weights[:, index])
+
+        top1 = torch.argmax(weights, dim=-1)
+        for index, name in enumerate(branch_names):
+            write_mean(f"Gate/top1_{name}", (top1 == index).float())
+
+        entropy = -torch.sum(weights * torch.log(weights.clamp_min(1.0e-8)), dim=-1)
+        write_mean("Gate/entropy", entropy)
+        residual_usage = 1.0 - weights[:, 0]
+        write_mean("Gate/residual_usage", residual_usage)
+        write_mean("Gate/pair_stair_slip", ((weights[:, 1] > 0.0) & (weights[:, 2] > 0.0)).float())
+        write_mean("Gate/pair_stair_recovery", ((weights[:, 1] > 0.0) & (weights[:, 3] > 0.0)).float())
+        write_mean("Gate/pair_slip_recovery", ((weights[:, 2] > 0.0) & (weights[:, 3] > 0.0)).float())
+
+        gray_hat = getattr(actor, "last_gray_hat", None)
+        if gray_hat is not None and gray_hat.shape[0] == weights.shape[0]:
+            gray_hat = gray_hat.detach()
+            estimator_names = (
+                "step_up_score",
+                "slope_score",
+                "traction_loss_score",
+                "instability_score",
+                "stall_score",
+            )
+            for index, name in enumerate(estimator_names):
+                write_mean(f"Estimator/{name}", gray_hat[:, index])
+
+            write_mean(
+                "GateByEstimator/est_step_up_gt_04_weight_stair",
+                weights[:, 1],
+                gray_hat[:, 0] > 0.4,
+            )
+            write_mean(
+                "GateByEstimator/est_traction_gt_04_weight_slip",
+                weights[:, 2],
+                gray_hat[:, 2] > 0.4,
+            )
+            write_mean(
+                "GateByEstimator/est_instability_gt_04_weight_recovery",
+                weights[:, 3],
+                gray_hat[:, 3] > 0.4,
+            )
+
+        terrain_types = getattr(self.env, "terrain_types", None)
+        proportions = getattr(self.env.cfg.terrain, "terrain_proportions", None)
+        if terrain_types is None or proportions is None or terrain_types.numel() != weights.shape[0]:
+            return
+
+        num_cols = max(int(getattr(self.env.cfg.terrain, "num_cols", 1)), 1)
+        choices = terrain_types.reshape(-1).to(weights.device, dtype=torch.float32) / float(num_cols) + 0.001
+        cumulative = torch.as_tensor(
+            np.cumsum(np.asarray(proportions, dtype=np.float32)),
+            device=weights.device,
+        )
+        terrain_names = (
+            "slope",
+            "rough_slope",
+            "stairs_up",
+            "stairs_down",
+            "obstacles",
+            "stones",
+            "gap",
+            "pit",
+        )
+        lower = choices.new_tensor(0.0)
+        terrain_masks = []
+        for index, name in enumerate(terrain_names[:-1]):
+            if index >= cumulative.numel():
+                break
+            upper = cumulative[index]
+            terrain_masks.append((name, (choices >= lower) & (choices < upper)))
+            lower = upper
+        terrain_masks.append((terrain_names[-1], choices >= lower))
+
+        for terrain_name, mask in terrain_masks:
+            for index, branch_name in enumerate(branch_names):
+                write_mean(
+                    f"GateByTerrain/{terrain_name}_weight_{branch_name}",
+                    weights[:, index],
+                    mask,
+                )
+            write_mean(
+                f"GateByTerrain/{terrain_name}_residual_usage",
+                residual_usage,
+                mask,
+            )
+
     def log(self, locs, width=80, pad=35):
         self.tot_timesteps += self.num_steps_per_env * self.env.num_envs
         self.tot_time += locs['collection_time'] + locs['learn_time']
@@ -568,6 +676,8 @@ class OnConstraintPolicyRunner:
                 ep_string += f"""{f'Mean episode {key}:':>{pad}} {value:.4f}\n"""
         #mean_std = self.alg.actor_critic.std.mean()
         mean_std = self.alg.actor_critic.get_std().mean()
+        if "obs" in locs:
+            self._log_moe_gate_diagnostics(locs["obs"], locs["it"])
         fps = int(self.num_steps_per_env * self.env.num_envs / (locs['collection_time'] + locs['learn_time']))
         #mean_kl_loss,mean_recons_loss,mean_vel_recons_loss
         self.writer.add_scalar('Loss/value_function', locs['mean_value_loss'], locs['it'])

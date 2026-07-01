@@ -114,6 +114,10 @@ class ActorCriticMoEGate(nn.Module):
         self.current_delta = None
         self.last_gate_weights = None
         self.last_gate_logits = None
+        self.last_v_hat = None
+        self.last_gray_hat = None
+        self.last_delta_norm = None
+        self.last_saturation_ratio = None
         self.gate_top_k = int(gate_top_k)
         self.gate_temperature = float(gate_temperature)
         self.residual_alpha = float(residual_alpha)
@@ -182,6 +186,8 @@ class ActorCriticMoEGate(nn.Module):
         obs_hist = obs[:, -self.num_hist * self.num_prop:].view(-1, self.num_hist, self.num_prop)
         with torch.no_grad():
             v_hat, gray_hat = self.estimator(obs_hist)
+        self.last_v_hat = v_hat
+        self.last_gray_hat = gray_hat
         self.last_gate_logits = self.gate_actor(torch.cat((obs_prop, v_hat, gray_hat), dim=-1))
         self.last_gate_weights = topk_softmax(
             self.last_gate_logits, self.gate_top_k, self.gate_temperature
@@ -206,7 +212,10 @@ class ActorCriticMoEGate(nn.Module):
                 residual_delta, -self.residual_delta_clip, self.residual_delta_clip
             )
         self.current_delta = self.residual_alpha * residual_delta
-        return torch.clamp(base_action + self.current_delta, -1.0, 1.0)
+        mean_action = base_action + self.current_delta
+        self.last_delta_norm = torch.norm(self.current_delta, dim=-1).mean().detach()
+        self.last_saturation_ratio = (mean_action.abs() > 0.95).float().mean().detach()
+        return torch.clamp(mean_action, -1.0, 1.0)
 
     def update_distribution(self, obs):
         mean = self.act_mean(obs)
