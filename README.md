@@ -279,6 +279,31 @@ python scripts/collect_moe_terrain_dataset.py \
   --residual_delta_clip 0.55 \
   --output data/moe_terrain/slip_flat_000.pt
 
+
+
+推理
+python scripts/play_moe_gate.py \
+  --task d1h_moe_gate_stair \
+  --base_task d1h_base \
+  --stair_task d1h_disc_residual \
+  --slip_task d1h_slip_residual \
+  --recovery_task d1h_recovery_residual \
+  --base_ckpt "$BASE_CKPT" \
+  --stair_ckpt "$STAIR_CKPT" \
+  --slip_ckpt "$SLIP_CKPT" \
+  --recovery_ckpt "$RECOVERY_CKPT" \
+  --estimator_ckpt "$ESTIMATOR_CKPT" \
+  --gate_ckpt logs/d1h_moe_gate_stair/Jul02_21-08-56_gate_full_expert_stair_warmup_800/checkpoints/model_400.pt \
+  --num_envs 16 \
+  --max_steps 2000 \
+  --headless \
+  --record_video \
+  --run_name play_full_expert_stair_warmup \
+  --residual_alpha 1.0 \
+  --residual_delta_clip 0.0
+
+
+
 ## 0. 指引
 
 >每个人的环境都不一样，遇到问题可以查看maybe_problems.md文件或在Issues上反馈。
