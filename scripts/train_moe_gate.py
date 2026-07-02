@@ -26,13 +26,19 @@ def get_args():
         {"name": "--num_envs", "type": int, "default": 4096},
         {"name": "--max_iterations", "type": int, "default": 4000},
         {"name": "--run_name", "type": str, "default": "gate_top2_v1"},
-        {"name": "--residual_alpha", "type": float, "default": 0.60},
+        {"name": "--residual_alpha", "type": float, "default": 1.0},
         {"name": "--residual_delta_clip", "type": float, "default": 0.0},
         {"name": "--gate_top_k", "type": int, "default": 2},
         {"name": "--gate_temperature", "type": float, "default": 1.0},
         {"name": "--gate_init_weight", "type": float, "default": 0.05},
         {"name": "--gate_aux_coef", "type": float, "default": 0.10},
         {"name": "--gate_aux_target_mode", "type": str, "default": None},
+        {"name": "--stair_residual_alpha", "type": float, "default": None},
+        {"name": "--slip_residual_alpha", "type": float, "default": None},
+        {"name": "--recovery_residual_alpha", "type": float, "default": None},
+        {"name": "--stair_residual_delta_clip", "type": float, "default": None},
+        {"name": "--slip_residual_delta_clip", "type": float, "default": None},
+        {"name": "--recovery_residual_delta_clip", "type": float, "default": None},
         {"name": "--record_video", "action": "store_true", "default": False},
         {"name": "--headless", "action": "store_true", "default": False},
         {"name": "--rl_device", "type": str, "default": "cuda:0"},
@@ -86,6 +92,18 @@ def train(args):
     train_cfg.algorithm.gate_aux_coef = args.gate_aux_coef
     if args.gate_aux_target_mode is not None:
         train_cfg.policy.gate_aux_target_mode = args.gate_aux_target_mode
+    expert_overrides = (
+        "stair_residual_alpha",
+        "slip_residual_alpha",
+        "recovery_residual_alpha",
+        "stair_residual_delta_clip",
+        "slip_residual_delta_clip",
+        "recovery_residual_delta_clip",
+    )
+    for name in expert_overrides:
+        value = getattr(args, name)
+        if value is not None:
+            setattr(train_cfg.policy, name, value)
     train_cfg.runner.max_iterations = args.max_iterations
     train_cfg.runner.run_name = args.run_name
     train_cfg.runner.record_video = args.record_video

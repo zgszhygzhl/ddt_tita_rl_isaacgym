@@ -102,9 +102,15 @@ class D1hMoEGateCfgPPO(D1hDiscResidualCfgPPO):
         gate_top_k = 2
         gate_temperature = 1.0
         gate_init_weight = 0.05
-        gate_aux_target_mode = "estimator_alpha"
-        residual_alpha = 0.60
+        gate_aux_target_mode = "estimator_full"
+        residual_alpha = 1.0
         residual_delta_clip = 0.0
+        stair_residual_alpha = 0.60
+        slip_residual_alpha = 0.45
+        recovery_residual_alpha = 0.60
+        stair_residual_delta_clip = 0.65
+        slip_residual_delta_clip = 0.65
+        recovery_residual_delta_clip = 0.85
         base_ckpt = ""
         stair_ckpt = ""
         slip_ckpt = ""
@@ -227,7 +233,7 @@ class D1hMoEGateStairCfgPPO(D1hMoEGateCfgPPO):
 
     class policy(D1hMoEGateCfgPPO.policy):
         gate_init_weight = 0.05
-        gate_aux_target_mode = "stair_warmup_alpha"
+        gate_aux_target_mode = "stair_full"
         residual_alpha = 1.0
         residual_delta_clip = 0.0
 

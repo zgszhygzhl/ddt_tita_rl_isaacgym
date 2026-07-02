@@ -579,10 +579,8 @@ class OnConstraintPolicyRunner:
 
         residual_sum = weights.sum(dim=-1)
         residual_max = weights.max(dim=-1).values
-        effective_stair_alpha = actor.residual_alpha * weights[:, 0]
         write_mean("Gate/residual_sum", residual_sum)
         write_mean("Gate/residual_max", residual_max)
-        write_mean("Gate/effective_stair_alpha", effective_stair_alpha)
 
         gray_hat = getattr(actor, "last_gray_hat", None)
         if gray_hat is not None and gray_hat.shape[0] == weights.shape[0]:
@@ -665,11 +663,6 @@ class OnConstraintPolicyRunner:
             write_mean(
                 "GateByTerrain/stairs_up_residual_max",
                 residual_max,
-                stairs_up_mask,
-            )
-            write_mean(
-                "GateByTerrain/stairs_up_effective_stair_alpha",
-                effective_stair_alpha,
                 stairs_up_mask,
             )
 
